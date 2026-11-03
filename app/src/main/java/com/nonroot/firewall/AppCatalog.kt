@@ -12,6 +12,7 @@ object AppCatalog {
     private const val PREFS = "app_catalog"
     private const val KEY = "entries"
     private const val VERSION = "revision"
+    private const val LAST_SCAN = "last_scan"
     private val lock = Any()
 
     fun read(context: Context): List<Entry> = synchronized(lock) {
@@ -23,6 +24,11 @@ object AppCatalog {
                 Entry(o.getString("pkg"), o.getString("label"), o.getBoolean("system"))
             }
         } catch (_: Exception) { emptyList() }
+    }
+
+    fun needsReconciliation(context: Context): Boolean {
+        val last = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(LAST_SCAN, 0L)
+        return last == 0L || System.currentTimeMillis() - last > 24L * 60 * 60 * 1000 || last > System.currentTimeMillis()
     }
 
     fun revision(context: Context): Long =
@@ -45,6 +51,7 @@ object AppCatalog {
                 (info.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0)
         }.distinctBy { it.pkg }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
         save(context, entries)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(LAST_SCAN, System.currentTimeMillis()).apply()
         entries
     }
 
