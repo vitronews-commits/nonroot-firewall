@@ -69,7 +69,7 @@ class MainActivity : Activity() {
     private fun render() {
         content.removeAllViews()
         when (page) {
-            "Home" -> message("Firewall is stopped\n\nRules are saved but NOT enforced. VPN engine not integrated.")
+            "Home" -> homeScreen()
             "Pending" -> message("No live pending accesses. VPN engine is not integrated.")
             "Apps" -> {
                 message("App Rules — saved locally (not yet active)")
@@ -101,7 +101,7 @@ class MainActivity : Activity() {
                 section("◆   ▥             Pre-Filters")
                 message("IP Filters — saved locally (not yet active)")
                 content.addView(Button(this).apply { text = "+ Add IP rule"; setOnClickListener { addRule() } })
-                rules.filter { it.packageName == null }.forEachIndexed { index, rule ->
+                rules.filter { it.packageName == null }.forEach { rule ->
                     content.addView(Button(this).apply {
                         text = "${if (rule.decision == Decision.ALLOW) "☑" else "☒"}     ${if (rule.decision == Decision.ALLOW) "☑" else "☒"}       ${rule.cidr}             DELETE"
                         isAllCaps = false
@@ -111,7 +111,7 @@ class MainActivity : Activity() {
                                 .setMessage(text)
                                 .setPositiveButton("Remove") { _, _ ->
                                     val old = rules.toList()
-                                    rules.removeAt(index)
+                                    rules.remove(rule)
                                     if (!store.save(rules)) {
                                         rules.clear(); rules.addAll(old)
                                         Toast.makeText(this@MainActivity, "Unable to save", Toast.LENGTH_LONG).show()
