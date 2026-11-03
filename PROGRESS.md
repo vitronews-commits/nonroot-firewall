@@ -85,3 +85,11 @@
 - [ ] Full installed-app listing is not implemented; Apps currently lists saved app rules only.
 - [ ] System/non-launcher packages may not resolve under package visibility restrictions.
 - [ ] Android CI build and device screenshot validation still unverified.
+
+## Installed-app discovery milestone
+- [x] Apps screen now enumerates visible launchable installed packages via PackageManager queryIntentActivities.
+- [x] Also includes packages referenced by saved AppRules and custom IpRules, including uninstalled apps.
+- [x] App rows sorted by display label, with package fallback where unavailable.
+- [x] Added missing android.view.View import used by list dividers.
+- [ ] Non-launcher system components are not exhaustively enumerated; Android package visibility is deliberately scoped.
+- [ ] Build status not verified; device testing still required.
