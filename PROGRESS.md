@@ -260,3 +260,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] MainActivity emits events after successful app/IP rule saves (69d18c03).
 - [x] Added listener delivery and failure isolation tests (c72d5b46).
 - [ ] Attach active engine session manager listener when engine exists; CI unverified, VPN inactive.
+
+## UDP manager rule-event lifecycle — 2026-11-04
+- [x] UDP manager registers a rule-change listener and unregisters on close (e072b395).
+- [x] Rule-change event regression test verifies session/socket revocation (b70c8d85).
+- [ ] Verify CI, concurrent event behavior and real forwarding before VPN activation.
