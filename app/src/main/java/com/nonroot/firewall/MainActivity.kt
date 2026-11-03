@@ -357,7 +357,7 @@ class MainActivity : Activity() {
             }
         }
         appendBatch()
-        list.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
+        content.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
     }
 
     private var appListGeneration = 0
