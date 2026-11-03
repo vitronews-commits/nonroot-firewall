@@ -30,6 +30,8 @@ class MainActivity : Activity() {
         packageManager.getApplicationLabel(info).toString() to packageManager.getApplicationIcon(info)
     } catch (_: PackageManager.NameNotFoundException) {
         pkg to null
+    } catch (_: SecurityException) {
+        pkg to null
     }
     private fun appIcon(pkg: String): android.view.View = ImageView(this).apply {
         val icon = appInfo(pkg).second
@@ -116,9 +118,13 @@ class MainActivity : Activity() {
 
     private fun visibleLaunchablePackages(): List<String> {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        return packageManager.queryIntentActivities(intent, 0)
-            .map { it.activityInfo.packageName }
-            .distinct()
+        return try {
+            packageManager.queryIntentActivities(intent, 0)
+                .map { it.activityInfo.packageName }
+                .distinct()
+        } catch (_: SecurityException) {
+            emptyList()
+        }
     }
 
     private fun effectiveAppDecision(pkg: String, network: NetworkKind): Decision? =
