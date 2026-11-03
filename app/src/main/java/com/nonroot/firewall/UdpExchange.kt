@@ -36,9 +36,8 @@ class UdpExchange(private val socketFactory: () -> DatagramSocket) {
         } catch (_: Exception) {
             return Outcome.Rejected
         }
-        val socket = socketFactory()
         return try {
-            socket.use { udp ->
+            socketFactory().use { udp ->
                 udp.soTimeout = timeoutMs
                 udp.connect(remote)
                 udp.send(DatagramPacket(request.payload, request.payload.size))
@@ -54,7 +53,7 @@ class UdpExchange(private val socketFactory: () -> DatagramSocket) {
                 ) ?: return Outcome.Rejected
                 Outcome.Reply(reply)
             }
-        } catch (_: java.io.IOException) {
+        } catch (_: Exception) {
             Outcome.Rejected
         }
     }
