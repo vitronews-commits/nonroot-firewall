@@ -204,3 +204,10 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] `UdpSocketPool` detects closed cached sockets, removes them and can create replacements; exposes `remove()` for error cleanup.
 - [ ] Socket pooling is still not integrated into the active `UdpRelay`; receive workers, packet delivery, and thread-safe TUN writes remain outstanding.
 - [ ] CI execution of these changes not yet independently verified. VPN remains inactive.
+
+## UDP pool tests — 2026-11-04
+- [x] Added socket pool reuse, expiry, capacity and shutdown tests (50a26ada).
+- [x] Reject unbound socket factory results (25a80141).
+- [x] Updated test fixtures to bind sockets (1c529249).
+- [ ] Confirm CI build and unit tests.
+- [ ] Integrate per-flow receive worker before using pooled sockets in relay.
