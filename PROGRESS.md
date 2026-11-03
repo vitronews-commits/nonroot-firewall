@@ -60,3 +60,12 @@
 - [ ] Match the original dialog's exact spacing, dropdown appearance and icons on a physical Android 15 device.
 - [ ] The `*` address currently maps to IPv4 only; IPv6-any requires separate support.
 - [ ] Real VPN enforcement and successful CI build remain unverified.
+
+## Video-based UI/policy refinement
+- [x] Custom IP filters now use first matching rule in stored order, consistent with classic App Detail wording.
+- [x] Global IP filters now check destination port as well as IP and network.
+- [x] Regression tests for first-match ordering and global port filtering added.
+- [x] New Custom Filter editor uses compact inline Address/Port rows and dropdown arrows.
+- [ ] Replace Wi-Fi/Mobile spinners with the exact compact three-state controls from the reference video.
+- [ ] CI build and visual screenshot comparison on Android 15 are not yet verified.
+- [ ] VPN packet forwarding and live Pending/Logs remain unimplemented.
