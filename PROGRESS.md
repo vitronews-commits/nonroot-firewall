@@ -211,3 +211,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] Updated test fixtures to bind sockets (1c529249).
 - [ ] Confirm CI build and unit tests.
 - [ ] Integrate per-flow receive worker before using pooled sockets in relay.
+
+## UDP pool API — 2026-11-04
+- [x] Added `activeSocket()` for non-allocating lookup and synchronized failed-flow eviction (096242b8).
+- [ ] New regression test write was blocked by tooling; test not committed.
+- [ ] CI verification and persistent relay integration remain pending.
