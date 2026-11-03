@@ -19,7 +19,7 @@ class UdpSocketPool(
             table.remove(key)
         }
         val candidate = try { openProtectedSocket() } catch (_: Exception) { return null }
-        if (candidate.isClosed) {
+        if (candidate.isClosed || !candidate.isBound) {
             candidate.close()
             return null
         }
