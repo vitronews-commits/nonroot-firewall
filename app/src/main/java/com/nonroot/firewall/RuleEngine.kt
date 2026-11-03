@@ -62,6 +62,16 @@ class RuleEngine(
         return try {
             val parts = cidr.split('/')
             if (parts.size != 2 || parts[0].any { it.isLetter() && it !in "abcdefABCDEF" }) return false
+            // Reject hostnames before InetAddress: policy evaluation must not trigger DNS.
+            val numeric = if (':' in address) {
+                address.matches(Regex("[0-9a-fA-F:.]+"))
+            } else {
+                val octets = address.split('.')
+                octets.size == 4 && octets.all {
+                    it.isNotEmpty() && it.all(Char::isDigit) && it.toIntOrNull() in 0..255
+                }
+            }
+            if (!numeric) return false
             val ip = InetAddress.getByName(address).address
             val network = InetAddress.getByName(parts[0]).address
             if (ip.size != network.size) return false
