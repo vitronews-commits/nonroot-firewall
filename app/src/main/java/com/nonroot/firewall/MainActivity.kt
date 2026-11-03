@@ -37,7 +37,6 @@ class MainActivity : Activity() {
     private var appsLoaded = false
     private var appsLoading = false
     private var catalogRevision = 0L
-    private var lastCatalogCheck = 0L
     private var showSystemApps = true
     private var appSearch = ""
     private var pendingSearch: Runnable? = null
@@ -115,7 +114,7 @@ class MainActivity : Activity() {
             catalogRevision = AppCatalog.revision(this)
         }
         render()
-        if (!appsLoaded) loadAppsAsync()
+        if (!appsLoaded || AppCatalog.needsReconciliation(this)) loadAppsAsync()
     }
 
     override fun onResume() {
@@ -128,6 +127,7 @@ class MainActivity : Activity() {
             catalogRevision = revision
             if (page == "Apps" && detailPackage == null) render()
         }
+        if (!appsLoading && AppCatalog.needsReconciliation(this)) loadAppsAsync()
     }
 
     override fun onDestroy() {
