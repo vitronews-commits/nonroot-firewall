@@ -118,6 +118,18 @@ class UdpSessionManagerTest {
         }
     }
 
+    @Test fun blockedRequestCannotReuseAllowedSession() {
+        var opened = 0
+        UdpSessionManager({
+            opened++
+            DatagramSocket(null).apply { bind(InetSocketAddress(0)) }
+        }, {}, capacity = 1).use { manager ->
+            assertTrue(manager.submit(key(), request(), PacketPolicy.Result.ALLOW))
+            assertFalse(manager.submit(key(), request(), PacketPolicy.Result.BLOCK))
+            assertEquals(1, opened)
+        }
+    }
+
     @Test fun invalidPortsCannotOpenSocket() {
         var opened = 0
         UdpSessionManager({
