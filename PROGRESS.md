@@ -93,3 +93,10 @@
 - [x] Added missing android.view.View import used by list dividers.
 - [ ] Non-launcher system components are not exhaustively enumerated; Android package visibility is deliberately scoped.
 - [ ] Build status not verified; device testing still required.
+
+## App quick-toggle milestone
+- [x] Wi-Fi/Mobile icons in Apps now cycle Pending -> Allow -> Block -> Pending on tap.
+- [x] Changes persist to AppRuleStore, preserving the other network when a generic app rule existed.
+- [x] CI uploads JUnit HTML reports even if build/test job fails.
+- [ ] Verify actual build result and on-device app-list UI; no successful APK is claimed.
+- [ ] VPN engine is still unavailable; app-rule toggles do not block traffic yet.
