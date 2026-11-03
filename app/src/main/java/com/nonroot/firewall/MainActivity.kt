@@ -460,23 +460,23 @@ class MainActivity : Activity() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(20, 40, 20, 20)
+            setPadding(dp(16), dp(28), dp(16), dp(16))
         }
         box.addView(Button(this).apply {
-            text = "START"; textSize = 28f; isEnabled = false
-        }, LinearLayout.LayoutParams(240, 160))
+            text = "START"; textSize = 26f; isEnabled = false
+        }, LinearLayout.LayoutParams(dp(150), dp(100)))
         box.addView(TextView(this).apply {
             text = "Click OK when it tries to create VPN connection"
-            textSize = 16f; gravity = Gravity.CENTER; setPadding(0, 14, 0, 10)
+            textSize = 16f; gravity = Gravity.CENTER; setPadding(0, dp(14), 0, dp(10))
         })
         box.addView(CheckBox(this).apply { text = "Auto start on boot"; isEnabled = false })
         box.addView(Button(this).apply {
             text = "STOP"; textSize = 28f; isEnabled = false
             setBackgroundColor(Color.rgb(211,47,47)); setTextColor(Color.WHITE)
-        }, LinearLayout.LayoutParams(240, 110).apply { topMargin = 65 })
+        }, LinearLayout.LayoutParams(dp(150), dp(80)).apply { topMargin = dp(60) })
         box.addView(TextView(this).apply {
             text = "Firewall engine not integrated — protection OFF"
-            setTextColor(Color.RED); gravity = Gravity.CENTER; setPadding(0, 24, 0, 0)
+            setTextColor(Color.RED); gravity = Gravity.CENTER; setPadding(0, dp(20), 0, 0)
         })
         content.addView(box)
     }
