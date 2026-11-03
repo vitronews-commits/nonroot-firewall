@@ -190,3 +190,11 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [ ] This table does not yet create sockets, send datagrams or manage receive workers; rejected registrations remain caller-owned and must be closed by their caller.
 - [ ] Integrate protected UDP sockets with the table, implement per-flow receive loops, serialized TUN output and safe shutdown.
 - [ ] Keep `FirewallVpnService` inactive until complete transport and return-path verification.
+
+## UDP socket pooling checkpoint — 2026-11-04
+- [x] Added `UdpSocketPool.kt` backed by `FlowResourceTable`, keyed by `FlowKey` for UDP-only socket reuse, capacity limits and idle expiry.
+- [x] Pool accepts a caller-provided socket factory; the caller MUST use `ProtectedUdpSocketFactory` in VPN context.
+- [ ] Socket pool is not yet wired into `UdpRelay`, connected to remote endpoints, or equipped with receive workers; this is resource management only.
+- [ ] Unit-test creation was attempted but blocked by the repository tool; no new pool tests were committed.
+- [ ] Verify compilation and tests in CI; no successful build claimed for this change.
+- [ ] VPN/TUN remains inactive.
