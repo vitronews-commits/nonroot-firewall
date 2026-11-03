@@ -58,4 +58,20 @@ class RuleEngineTest {
         engine.ipRules.add(IpRule("com.android.chrome", "192.0.2.15/32", null, Decision.ALLOW))
         assertEquals(Decision.ALLOW, engine.decide(chrome))
     }
+
+    @Test fun firstMatchingCustomFilterWinsEvenWhenLessSpecific() {
+        val engine = RuleEngine()
+        engine.ipRules.add(IpRule("com.android.chrome", "192.0.2.0/24", null, Decision.BLOCK, 443))
+        engine.ipRules.add(IpRule("com.android.chrome", "192.0.2.15/32", null, Decision.ALLOW, 443))
+        assertEquals(Decision.BLOCK, engine.decide(chrome))
+        engine.ipRules.reverse()
+        assertEquals(Decision.ALLOW, engine.decide(chrome))
+    }
+
+    @Test fun globalFilterRespectsDestinationPort() {
+        val engine = RuleEngine()
+        engine.ipRules.add(IpRule(null, "192.0.2.0/24", null, Decision.BLOCK, 443))
+        assertEquals(Decision.PENDING, engine.decide(chrome.copy(port = 80)))
+        assertEquals(Decision.BLOCK, engine.decide(chrome))
+    }
 }
