@@ -29,7 +29,11 @@ class UdpSessionManager(
     /** Only explicitly ALLOWed packets can create or use sessions. */
     @Synchronized
     fun submit(key: FlowKey, request: UdpDatagram.Parsed, policy: PacketPolicy.Result): Boolean {
-        if (closed.get() || policy != PacketPolicy.Result.ALLOW ||
+        if (policy != PacketPolicy.Result.ALLOW) {
+            sessions.remove(key)?.close()
+            return false
+        }
+        if (closed.get() ||
             key.protocol != 17 || key.sourceIp != request.sourceIp ||
             key.destinationIp != request.destinationIp ||
             key.sourcePort != request.sourcePort ||
