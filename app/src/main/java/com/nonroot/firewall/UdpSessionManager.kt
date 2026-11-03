@@ -34,7 +34,9 @@ class UdpSessionManager(
             key.destinationIp != request.destinationIp ||
             key.sourcePort != request.sourcePort ||
             key.destinationPort != request.destinationPort ||
-            request.payload.size > 1472) return false
+            request.payload.size > 1472 ||
+            request.sourcePort !in 1..65535 ||
+            request.destinationPort !in 1..65535) return false
 
         val existing = sessions[key]
         if (existing != null) {
