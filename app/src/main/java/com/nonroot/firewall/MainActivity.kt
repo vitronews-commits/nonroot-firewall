@@ -162,6 +162,23 @@ class MainActivity : Activity() {
             .distinct()
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { appInfo(it).first })
         if (packages.isEmpty()) message("No visible applications found")
+        val headings = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(4), dp(12), dp(4))
+            setBackgroundColor(Color.rgb(236, 242, 248))
+        }
+        headings.addView(TextView(this), LinearLayout.LayoutParams(dp(48), dp(32)))
+        headings.addView(TextView(this).apply {
+            text = "Wi-Fi"; gravity = Gravity.CENTER; textSize = 12f; setTextColor(Color.DKGRAY)
+        }, LinearLayout.LayoutParams(dp(46), dp(32)))
+        headings.addView(TextView(this).apply {
+            text = "Mobile"; gravity = Gravity.CENTER; textSize = 12f; setTextColor(Color.DKGRAY)
+        }, LinearLayout.LayoutParams(dp(46), dp(32)))
+        headings.addView(TextView(this).apply {
+            text = "Application"; textSize = 13f; gravity = Gravity.CENTER_VERTICAL; setTextColor(Color.DKGRAY)
+        }, LinearLayout.LayoutParams(0, dp(32), 1f))
+        content.addView(headings)
         for (pkg in packages) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
