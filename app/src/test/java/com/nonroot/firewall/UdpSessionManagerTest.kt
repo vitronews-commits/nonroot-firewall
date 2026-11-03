@@ -91,6 +91,33 @@ class UdpSessionManagerTest {
         }
     }
 
+    @Test fun concurrentSameFlowNeverAllocatesExtraSocket() {
+        val opened = java.util.concurrent.atomic.AtomicInteger()
+        UdpSessionManager({
+            opened.incrementAndGet()
+            DatagramSocket(null).apply { bind(InetSocketAddress(0)) }
+        }, {}, capacity = 1).use { manager ->
+            val start = java.util.concurrent.CountDownLatch(1)
+            val done = java.util.concurrent.CountDownLatch(8)
+            val results = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+            repeat(8) {
+                Thread {
+                    try {
+                        start.await()
+                        results.add(manager.submit(key(), request(), PacketPolicy.Result.ALLOW))
+                    } finally {
+                        done.countDown()
+                    }
+                }.start()
+            }
+            start.countDown()
+            assertTrue(done.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(8, results.size)
+            assertTrue(results.all { it })
+            assertEquals(1, opened.get())
+        }
+    }
+
     @Test fun invalidPortsCannotOpenSocket() {
         var opened = 0
         UdpSessionManager({
