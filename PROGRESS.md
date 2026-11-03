@@ -152,7 +152,8 @@
 
 ### Verification and important limitations
 - [ ] **Run a current successful GitHub Actions build and all unit tests.** No successful run for the latest commits has been verified.
-- [ ] Review/check UDP checksum validation on ingress and IPv4 header checksums; the current UDP parser validates lengths but not checksums.
+- [x] Added IPv4 header and UDP pseudo-header checksum validation at the UDP pipeline boundary (IPv4 zero UDP checksum is permitted). Five regression tests added; execution not yet verified.
+- [ ] Extend checksum validation coverage to all relevant packet ingress paths; the standalone UDP parser still only validates lengths.
 - [ ] Ensure IPv6 extension/fragment semantics, malformed packets and IPv4/IPv6 parity are thoroughly tested.
 - [ ] Resolve per-UID ownership accurately in an actual active VPN context, including shared UID, unknown UID, timing and socket tuple limitations.
 - [ ] Replace one-shot UDP sockets with bounded, persistent per-flow UDP sessions, idle expiry, reply validation, concurrency controls and teardown.
@@ -167,3 +168,12 @@
 
 ### Documentation discipline
 Update this `PROGRESS.md` whenever a meaningful implementation, test, build result, blocker or architectural decision changes. Distinguish source committed, tests written, tests passed, device-tested and production-ready.
+
+## UDP integrity checkpoint — 2026-11-04
+- [x] Added `UdpChecksums.kt` with IPv4 header and UDP checksum verification, including fragment rejection.
+- [x] `UdpPacketPipeline` now rejects packets failing integrity checks before rule evaluation/relay admission.
+- [x] Updated pipeline fixtures to generate valid checksummed packets; added `UdpChecksumsTest.kt` with five test cases.
+- [x] Removed unused imports from `UdpRelay.kt`.
+- [ ] Execute CI unit tests and debug APK build for these commits; no successful run verified.
+- [ ] Persistent UDP sessions, TUN reply writer, TCP/IPv6 forwarding and real-device validation remain outstanding.
+- [ ] VPN service remains intentionally inactive.
