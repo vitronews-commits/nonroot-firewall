@@ -32,6 +32,7 @@ class MainActivity : Activity() {
     private var installedApps: List<AppEntry> = emptyList()
     private var appsLoaded = false
     private var appsLoading = false
+    private var catalogRevision = 0L
     private var showSystemApps = true
     private var appSearch = ""
     private var appGeneration = 0
@@ -99,8 +100,26 @@ class MainActivity : Activity() {
         }
         root.addView(tabs)
         setContentView(root)
+        val cached = AppCatalog.read(this)
+        if (cached.isNotEmpty()) {
+            installedApps = cached.map { AppEntry(it.pkg, it.label, it.system) }
+            appsLoaded = true
+            catalogRevision = AppCatalog.revision(this)
+        }
         render()
         loadAppsAsync()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!::content.isInitialized) return
+        val revision = AppCatalog.revision(this)
+        if (revision != catalogRevision && revision != 0L) {
+            installedApps = AppCatalog.read(this).map { AppEntry(it.pkg, it.label, it.system) }
+            appsLoaded = true
+            catalogRevision = revision
+            if (page == "Apps" && detailPackage == null) render()
+        }
     }
 
     override fun onDestroy() {
@@ -114,19 +133,14 @@ class MainActivity : Activity() {
         appsLoading = true
         val generation = ++appGeneration
         appExecutor.execute {
-            val pm = packageManager
-            val entries = try {
-                pm.getInstalledApplications(0).map { info ->
-                    AppEntry(info.packageName, pm.getApplicationLabel(info).toString(),
-                        (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
-                        (info.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0)
-                }
-            } catch (_: Exception) { emptyList() }
-            val sorted = entries.distinctBy { it.pkg }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
+            val entries = try { AppCatalog.scan(applicationContext) } catch (_: Exception) { emptyList() }
             mainHandler.post {
                 if (generation != appGeneration || isFinishing || isDestroyed) return@post
-                installedApps = sorted
-                appsLoaded = true
+                if (entries.isNotEmpty()) {
+                    installedApps = entries.map { AppEntry(it.pkg, it.label, it.system) }
+                    catalogRevision = AppCatalog.revision(this)
+                    appsLoaded = true
+                }
                 appsLoading = false
                 if (page == "Apps" && detailPackage == null) render()
             }
@@ -270,7 +284,7 @@ class MainActivity : Activity() {
         var index = 0
         fun appendBatch() {
             if (generation != appListGeneration || page != "Apps" || detailPackage != null) return
-            val limit = minOf(index + 20, visible.size)
+            val limit = minOf(index + 60, visible.size)
             while (index < limit) {
                 val item = visible[index++]
                 val row = LinearLayout(this).apply {
@@ -315,7 +329,12 @@ class MainActivity : Activity() {
                 list.addView(row)
                 list.addView(View(this).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(-1, dp(1)))
             }
-            if (index < visible.size) mainHandler.post { appendBatch() }
+            if (index < visible.size) {
+                list.addView(Button(this).apply {
+                    text = "Show more (${visible.size - index} remaining)"
+                    setOnClickListener { list.removeView(this); appendBatch() }
+                })
+            }
         }
         appendBatch()
         list.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
