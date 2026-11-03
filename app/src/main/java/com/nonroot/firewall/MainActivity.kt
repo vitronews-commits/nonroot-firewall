@@ -69,8 +69,8 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 35) window.setDecorFitsSystemWindows(true)
         window.statusBarColor = Color.rgb(58, 158, 238)
         window.navigationBarColor = Color.BLACK
-        store = RuleStore(this)
-        appStore = AppRuleStore(this)
+        store = RuleStore(this, RuleChangeBus::notifySaved)
+        appStore = AppRuleStore(this, RuleChangeBus::notifySaved)
         rules.addAll(store.load())
         appRules.addAll(appStore.load())
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(250,250,250)) }
