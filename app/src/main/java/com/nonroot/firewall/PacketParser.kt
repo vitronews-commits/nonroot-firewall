@@ -22,4 +22,46 @@ object PacketParser {
             if (portsPresent) word(data,headerSize) else null,
             if (portsPresent) word(data,headerSize+2) else null,fragmented)
     }
+    /** IPv6 including bounded extension-header traversal. Jumbo payloads are not supported. */
+    fun parseIpv6(data: ByteArray): Header? {
+        if (data.size < 40 || byteAt(data, 0) shr 4 != 6) return null
+        val payload = word(data, 4)
+        if (payload == 0 || payload > data.size - 40) return null
+        val end = 40 + payload
+        var protocol = byteAt(data, 6)
+        var cursor = 40
+        var fragmented = false
+        var laterFragment = false
+        var traversed = 0
+        while (protocol in listOf(0, 43, 44, 51, 60, 135)) {
+            if (++traversed > 12 || cursor + 2 > end) return null
+            val next = byteAt(data, cursor)
+            val size = when (protocol) {
+                44 -> 8
+                51 -> (byteAt(data, cursor + 1) + 2) * 4
+                else -> (byteAt(data, cursor + 1) + 1) * 8
+            }
+            if (cursor + size > end) return null
+            if (protocol == 44) {
+                fragmented = true
+                laterFragment = word(data, cursor + 2) and 0xfff8 != 0
+            }
+            cursor += size
+            protocol = next
+        }
+        fun address(start: Int): String =
+            java.net.InetAddress.getByAddress(data.copyOfRange(start, start + 16)).hostAddress ?: ""
+        val portsPresent = !laterFragment && (protocol == 6 || protocol == 17) && cursor + 4 <= end
+        return Header(address(8), address(24), protocol,
+            if (portsPresent) word(data, cursor) else null,
+            if (portsPresent) word(data, cursor + 2) else null, fragmented)
+    }
+
+    fun parse(data: ByteArray): Header? = when {
+        data.isEmpty() -> null
+        byteAt(data, 0) shr 4 == 4 -> parseIpv4(data)
+        byteAt(data, 0) shr 4 == 6 -> parseIpv6(data)
+        else -> null
+    }
+
 }
