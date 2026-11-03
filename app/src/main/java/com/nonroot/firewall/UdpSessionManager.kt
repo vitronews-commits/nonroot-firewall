@@ -78,6 +78,22 @@ class UdpSessionManager(
         }
     }
 
+    /** Revalidate every active flow immediately after firewall rules change. */
+    @Synchronized
+    fun revokeWhere(shouldRevoke: (FlowKey) -> Boolean): Int {
+        var removed = 0
+        val iterator = sessions.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (shouldRevoke(entry.key)) {
+                entry.value.close()
+                iterator.remove()
+                removed++
+            }
+        }
+        return removed
+    }
+
     @Synchronized
     fun activeCount(): Int = sessions.size
 
