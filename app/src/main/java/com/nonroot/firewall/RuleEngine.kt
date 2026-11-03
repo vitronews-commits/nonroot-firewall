@@ -30,9 +30,30 @@ class RuleEngine(
         return Decision.PENDING // Ask by default: unknown connections must never pass.
     }
 
+    companion object {
+        /** Only numeric literals are accepted: no hostname resolution or network lookup. */
+        fun isValidCidr(cidr: String): Boolean {
+            val parts = cidr.split('/')
+            if (parts.size != 2) return false
+            val bits = parts[1].toIntOrNull() ?: return false
+            val ip = parts[0]
+            if (':' in ip) {
+                if (!ip.matches(Regex("[0-9a-fA-F:.]+"))) return false
+                return try {
+                    val bytes = InetAddress.getByName(ip).address
+                    bytes.size == 16 && bits in 0..128
+                } catch (_: Exception) { false }
+            }
+            val octets = ip.split('.')
+            if (octets.size != 4 || octets.any { it.isEmpty() || !it.all(Char::isDigit) || it.toIntOrNull() !in 0..255 }) return false
+            return bits in 0..32
+        }
+    }
+
     private fun prefix(cidr: String): Int = cidr.substringAfter('/', "").toIntOrNull() ?: -1
 
     private fun matchesCidr(address: String, cidr: String): Boolean {
+        if (!isValidCidr(cidr)) return false
         return try {
             val parts = cidr.split('/')
             if (parts.size != 2 || parts[0].any { it.isLetter() && it !in "abcdefABCDEF" }) return false
