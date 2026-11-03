@@ -249,3 +249,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] Added blocked-session reuse test (1b0e1107).
 - [x] Revoke existing UDP session on non-ALLOW policy (6f26eae8).
 - [ ] CI execution and Android device verification pending; VPN inactive.
+
+## UDP rule-change invalidation — 2026-11-04
+- [x] Added onRulesChanged() to close all active UDP sessions (68274d98).
+- [x] Added regression test for session and socket cleanup (4e17ee2a).
+- [ ] Wire hook to actual rule persistence/UI events and verify CI; VPN remains inactive.
