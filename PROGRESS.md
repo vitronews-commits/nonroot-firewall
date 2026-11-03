@@ -228,3 +228,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] Authorized UDP packets use persistent sessions when injected, otherwise existing one-shot relay.
 - [x] UDP reply callback exceptions no longer terminate the session receive loop.
 - [ ] Verify CI and integration tests; no VPN/TUN activation.
+
+## UDP pipeline compatibility — 2026-11-04
+- [x] Restored trailing-lambda constructor compatibility after optional manager injection (11c6fc6c).
+- [x] Added regression test ensuring manager cannot bypass the transport-ready gate (499ab7ba).
+- [ ] CI verification pending; VPN remains inactive.
