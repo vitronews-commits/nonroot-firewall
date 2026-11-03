@@ -120,7 +120,7 @@ class MainActivity : Activity() {
         message("◆   Wi-Fi       Custom filters")
         message("▥   Mobile     Custom filters")
         section("◆   ▥                  Custom Filters")
-        message("Most specific matching rule wins")
+        message("The first matching custom rule 'wins'")
         for (rule in rules.filter { it.packageName == pkg }) filterRow(rule)
         content.addView(Button(this).apply { text = "＋ New Custom Filter"; setOnClickListener { addRule(pkg) } })
         content.addView(Button(this).apply { text = "Edit App Access"; setOnClickListener { addAppRule(pkg) } })
@@ -222,7 +222,7 @@ class MainActivity : Activity() {
             isSingleLine = true
         }
         val addressMenu = Button(this).apply {
-            text = "▼ Address suggestions"
+            text = "▼"
             setOnClickListener {
                 val choices = AddressPatterns.suggestions(address.text.toString())
                 AlertDialog.Builder(this@MainActivity).setItems(choices.toTypedArray()) { _, index ->
@@ -237,7 +237,7 @@ class MainActivity : Activity() {
             isSingleLine = true
         }
         val portMenu = Button(this).apply {
-            text = "▼ Port suggestions"
+            text = "▼"
             setOnClickListener {
                 val choices = arrayOf("443", "80", "*")
                 AlertDialog.Builder(this@MainActivity).setItems(choices) { _, index ->
@@ -258,9 +258,16 @@ class MainActivity : Activity() {
             adapter = ArrayAdapter(this@MainActivity,
                 android.R.layout.simple_spinner_dropdown_item, listOf("Mobile: Pending", "Mobile: Allow", "Mobile: Block"))
         }
-        form.addView(address); form.addView(addressMenu)
-        form.addView(port); form.addView(portMenu)
-        form.addView(pkg)
+        val addressRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        addressRow.addView(TextView(this).apply { text = "Address"; textSize = 14f }, LinearLayout.LayoutParams(80, -2))
+        addressRow.addView(address, LinearLayout.LayoutParams(0, -2, 1f))
+        addressRow.addView(addressMenu, LinearLayout.LayoutParams(56, -2))
+        val portRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        portRow.addView(TextView(this).apply { text = "Port"; textSize = 14f }, LinearLayout.LayoutParams(80, -2))
+        portRow.addView(port, LinearLayout.LayoutParams(0, -2, 1f))
+        portRow.addView(portMenu, LinearLayout.LayoutParams(56, -2))
+        form.addView(addressRow); form.addView(portRow)
+        if (prefillPackage == null) form.addView(pkg)
         val modes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         modes.addView(wifi, LinearLayout.LayoutParams(0, -2, 1f))
         modes.addView(mobile, LinearLayout.LayoutParams(0, -2, 1f))
