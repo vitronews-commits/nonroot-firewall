@@ -5,7 +5,7 @@ import java.net.InetAddress
 enum class Decision { ALLOW, BLOCK, PENDING }
 enum class NetworkKind { WIFI, MOBILE, OTHER }
 data class Connection(val packageName: String, val ip: String, val port: Int, val network: NetworkKind)
-data class IpRule(val packageName: String?, val cidr: String, val network: NetworkKind?, val decision: Decision)
+data class IpRule(val packageName: String?, val cidr: String, val network: NetworkKind?, val decision: Decision, val port: Int? = null)
 data class AppRule(val packageName: String, val network: NetworkKind?, val decision: Decision)
 
 /** Pure policy engine. No network forwarding is implemented in this milestone. */
@@ -19,6 +19,7 @@ class RuleEngine(
         val specific = ipRules.filter {
             it.packageName == connection.packageName &&
             (it.network == null || it.network == connection.network) &&
+            (it.port == null || it.port == connection.port) &&
             matchesCidr(connection.ip, it.cidr)
         }
         bestIpRule(specific, connection.network)?.let { return it.decision }
