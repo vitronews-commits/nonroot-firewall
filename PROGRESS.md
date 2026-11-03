@@ -198,3 +198,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [ ] Unit-test creation was attempted but blocked by the repository tool; no new pool tests were committed.
 - [ ] Verify compilation and tests in CI; no successful build claimed for this change.
 - [ ] VPN/TUN remains inactive.
+
+## UDP socket lifecycle hardening — 2026-11-04
+- [x] `FlowResourceTable.remove()` now explicitly closes and unregisters failed resources; added idempotent cleanup regression test.
+- [x] `UdpSocketPool` detects closed cached sockets, removes them and can create replacements; exposes `remove()` for error cleanup.
+- [ ] Socket pooling is still not integrated into the active `UdpRelay`; receive workers, packet delivery, and thread-safe TUN writes remain outstanding.
+- [ ] CI execution of these changes not yet independently verified. VPN remains inactive.
