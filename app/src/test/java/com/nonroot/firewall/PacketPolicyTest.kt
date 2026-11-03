@@ -45,4 +45,21 @@ class PacketPolicyTest {
         assertEquals(PacketPolicy.Result.BLOCK,
             PacketPolicy.evaluate(PacketParser.parse(ipv6()), "example.app", NetworkKind.WIFI, engine))
     }
+    @Test fun sharedUidDoesNotInheritOnePackagesAllowRule() {
+        val engine = RuleEngine()
+        engine.appRules.add(AppRule("trusted.app", NetworkKind.WIFI, Decision.ALLOW))
+        val result = PacketPolicy.evaluateWithOwner(
+            PacketParser.parse(ipv6()), listOf("trusted.app", "untrusted.app"), NetworkKind.WIFI, engine
+        )
+        assertEquals(PacketPolicy.Result.UNATTRIBUTED, result)
+    }
+
+    @Test fun singleOwnerCanUseAppRule() {
+        val engine = RuleEngine()
+        engine.appRules.add(AppRule("trusted.app", NetworkKind.WIFI, Decision.BLOCK))
+        val result = PacketPolicy.evaluateWithOwner(
+            PacketParser.parse(ipv6()), listOf("trusted.app"), NetworkKind.WIFI, engine
+        )
+        assertEquals(PacketPolicy.Result.BLOCK, result)
+    }
 }
