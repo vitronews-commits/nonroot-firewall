@@ -21,6 +21,7 @@ class UdpFlowSession(
 ) : Closeable {
     private val closed = AtomicBoolean(false)
     @Volatile private var lastActivity = System.nanoTime()
+    private val receiving = AtomicBoolean(false)
 
     init {
         require(idleMs in 1_000..300_000)
@@ -50,6 +51,7 @@ class UdpFlowSession(
 
     /** Run on a dedicated worker. Never run two receivers for one session. */
     fun receiveLoop() {
+        check(receiving.compareAndSet(false, true)) { "Receiver already started" }
         val buffer = ByteArray(2048)
         try {
             while (!closed.get()) {
@@ -73,6 +75,8 @@ class UdpFlowSession(
             close()
         }
     }
+
+    fun isClosed(): Boolean = closed.get() || socket.isClosed
 
     override fun close() {
         if (closed.compareAndSet(false, true)) socket.close()
