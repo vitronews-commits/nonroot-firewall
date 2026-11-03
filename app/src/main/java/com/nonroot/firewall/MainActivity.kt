@@ -121,6 +121,32 @@ class MainActivity : Activity() {
             .distinct()
     }
 
+    private fun effectiveAppDecision(pkg: String, network: NetworkKind): Decision? =
+        appRules.lastOrNull { it.packageName == pkg && it.network == network }?.decision
+            ?: appRules.lastOrNull { it.packageName == pkg && it.network == null }?.decision
+
+    private fun cycleAppAccess(pkg: String, network: NetworkKind) {
+        val next = when (effectiveAppDecision(pkg, network)) {
+            null, Decision.PENDING -> Decision.ALLOW
+            Decision.ALLOW -> Decision.BLOCK
+            Decision.BLOCK -> null
+        }
+        val old = appRules.toList()
+        // Preserve other-network behavior if a generic rule was previously configured.
+        val other = if (network == NetworkKind.WIFI) NetworkKind.MOBILE else NetworkKind.WIFI
+        val otherDecision = effectiveAppDecision(pkg, other)
+        appRules.removeAll { it.packageName == pkg && (it.network == network || it.network == null) }
+        if (otherDecision != null && appRules.none { it.packageName == pkg && it.network == other }) {
+            appRules.add(AppRule(pkg, other, otherDecision))
+        }
+        if (next != null) appRules.add(AppRule(pkg, network, next))
+        if (!appStore.save(appRules)) {
+            appRules.clear(); appRules.addAll(old)
+            Toast.makeText(this, "Unable to save app rule", Toast.LENGTH_LONG).show()
+        }
+        render()
+    }
+
     private fun appsScreen() {
         section("◆   ▥                  Applications")
         // Include saved targets even if the app was uninstalled.
@@ -136,11 +162,11 @@ class MainActivity : Activity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(12, 6, 12, 6)
             }
-            val wifi = appRules.lastOrNull { it.packageName == pkg && (it.network == NetworkKind.WIFI || it.network == null) }
-            val mobile = appRules.lastOrNull { it.packageName == pkg && (it.network == NetworkKind.MOBILE || it.network == null) }
+            val wifi = effectiveAppDecision(pkg, NetworkKind.WIFI)
+            val mobile = effectiveAppDecision(pkg, NetworkKind.MOBILE)
             row.addView(appIcon(pkg), LinearLayout.LayoutParams(dp(48), dp(54)))
-            row.addView(TextView(this).apply { text = marker(wifi?.decision); textSize = 25f }, LinearLayout.LayoutParams(dp(46), dp(54)))
-            row.addView(TextView(this).apply { text = marker(mobile?.decision); textSize = 25f }, LinearLayout.LayoutParams(dp(46), dp(54)))
+            row.addView(TextView(this).apply { text = marker(wifi); textSize = 25f; gravity = Gravity.CENTER; setOnClickListener { cycleAppAccess(pkg, NetworkKind.WIFI) } }, LinearLayout.LayoutParams(dp(46), dp(54)))
+            row.addView(TextView(this).apply { text = marker(mobile); textSize = 25f; gravity = Gravity.CENTER; setOnClickListener { cycleAppAccess(pkg, NetworkKind.MOBILE) } }, LinearLayout.LayoutParams(dp(46), dp(54)))
             row.addView(TextView(this).apply { text = appInfo(pkg).first; textSize = 16f; gravity = Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams(0, dp(54), 1f))
             row.addView(TextView(this).apply { text = "›"; textSize = 30f })
             row.setOnClickListener { detailPackage = pkg; render() }
