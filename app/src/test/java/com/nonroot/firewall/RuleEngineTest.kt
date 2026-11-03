@@ -74,4 +74,16 @@ class RuleEngineTest {
         assertEquals(Decision.PENDING, engine.decide(chrome.copy(port = 80)))
         assertEquals(Decision.BLOCK, engine.decide(chrome))
     }
+
+    @Test fun hostnameCannotMatchIpFilter() {
+        val engine = RuleEngine()
+        engine.ipRules.add(IpRule(null, "0.0.0.0/0", null, Decision.ALLOW))
+        assertEquals(Decision.PENDING, engine.decide(chrome.copy(ip = "example.com")))
+    }
+
+    @Test fun malformedIpv4CannotMatchCatchAll() {
+        val engine = RuleEngine()
+        engine.ipRules.add(IpRule(null, "0.0.0.0/0", null, Decision.ALLOW))
+        assertEquals(Decision.PENDING, engine.decide(chrome.copy(ip = "999.1.2.3")))
+    }
 }
