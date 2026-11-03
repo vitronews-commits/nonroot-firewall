@@ -36,7 +36,7 @@ class UdpSessionManagerTest {
     }
 
     @Test fun allowedRequestUsesLocalUdpResponder() {
-        DatagramSocket(0, java.net.InetAddress.getLoopbackAddress()).use { server ->
+        DatagramSocket(0, java.net.InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))).use { server ->
             server.soTimeout = 2000
             val latch = java.util.concurrent.CountDownLatch(1)
             val received = java.util.concurrent.atomic.AtomicReference<ByteArray>()
