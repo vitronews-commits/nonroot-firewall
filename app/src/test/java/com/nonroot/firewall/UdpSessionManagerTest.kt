@@ -130,6 +130,24 @@ class UdpSessionManagerTest {
         }
     }
 
+    @Test fun bulkRevocationClosesSelectedSessions() {
+        val sockets = mutableListOf<DatagramSocket>()
+        UdpSessionManager({
+            DatagramSocket(null).apply {
+                bind(InetSocketAddress(0))
+                sockets.add(this)
+            }
+        }, {}, capacity = 2).use { manager ->
+            assertTrue(manager.submit(key(), request(), PacketPolicy.Result.ALLOW))
+            assertTrue(manager.submit(key(12001), request(12001), PacketPolicy.Result.ALLOW))
+            assertEquals(1, manager.revokeWhere { it.sourcePort == 12000 })
+            assertEquals(1, manager.activeCount())
+            assertTrue(sockets[0].isClosed)
+            assertFalse(sockets[1].isClosed)
+        }
+        assertTrue(sockets.all { it.isClosed })
+    }
+
     @Test fun invalidPortsCannotOpenSocket() {
         var opened = 0
         UdpSessionManager({
