@@ -129,3 +129,41 @@
 - [x] Added codemagic.yaml with linux_x2, Java 17, Gradle 8.9 bootstrap, unit tests, debug APK assembly, ZIP integrity check, and downloadable APK/test reports.
 - [ ] Connect GitHub repository in Codemagic and run the first build.
 - [ ] Verify actual Codemagic build result; no success is claimed yet.
+
+## Development checkpoint — 2026-11-04 (source-level; CI not verified)
+**Priority:** complete and validate the packet-processing architecture before further UI polish.
+
+### Implemented since previous progress update
+- [x] Installed-app catalog caching, background refresh, RecyclerView/DiffUtil and targeted row refresh to avoid scroll jumps.
+- [x] Wi-Fi/mobile three-state app controls, colored full-width rows, app icons and compact Apps refresh action.
+- [x] AndroidX configuration correction added in `gradle.properties` after a failed CI run.
+- [x] `PacketParser`: basic IPv4/IPv6 header, protocol, address and port parsing, bounded IPv6 extension traversal.
+- [x] `PacketPolicy`: packet metadata mapped to the pure `RuleEngine`, with explicit UNATTRIBUTED/UNSUPPORTED outcomes.
+- [x] `ConnectionOwnerResolver`: Android 10+ `ConnectivityManager.getConnectionOwnerUid` lookup scaffold; shared UID ambiguity is not silently resolved.
+- [x] `ForwardingGate`: fail-closed decision layer; ALLOW alone is insufficient without ready transport.
+- [x] `FlowKey`/`FlowTable`: bounded, expiring flow metadata bookkeeping; not yet integrated with a persistent relay.
+- [x] `UdpDatagram`: basic strict IPv4 UDP payload extraction.
+- [x] `UdpResponsePacket`: IPv4 UDP response serialization and checksum generation.
+- [x] `ProtectedUdpSocketFactory`: protects sockets before binding, closes on failure.
+- [x] `UdpExchange`: experimental one-shot UDP request/reply with policy check and timeout.
+- [x] `UdpRelay`: bounded asynchronous worker queue, using one socket per exchange.
+- [x] `UdpPacketPipeline`: connects packet parsing, attributed package decisions, forwarding gate and relay.
+- [x] Added unit-test source files for parsers, policy, flow bookkeeping, UDP replies, exchange, relay and pipeline.
+
+### Verification and important limitations
+- [ ] **Run a current successful GitHub Actions build and all unit tests.** No successful run for the latest commits has been verified.
+- [ ] Review/check UDP checksum validation on ingress and IPv4 header checksums; the current UDP parser validates lengths but not checksums.
+- [ ] Ensure IPv6 extension/fragment semantics, malformed packets and IPv4/IPv6 parity are thoroughly tested.
+- [ ] Resolve per-UID ownership accurately in an actual active VPN context, including shared UID, unknown UID, timing and socket tuple limitations.
+- [ ] Replace one-shot UDP sockets with bounded, persistent per-flow UDP sessions, idle expiry, reply validation, concurrency controls and teardown.
+- [ ] Wire reply packets to a synchronized TUN writer, with explicit lifetime and error handling.
+- [ ] Add TCP forwarding, DNS/QUIC and IPv6 handling, network-switch behavior and leak tests.
+- [ ] Connect Pending approvals and Logs to real traffic; do not display fabricated protection state.
+- [ ] Test on Xiaomi Redmi 13C / Android 15 before enabling VPN.
+
+**Security gate:** `FirewallVpnService` remains an inactive placeholder. Do not establish TUN, advertise protection or route device traffic until a complete, verified forwarding/return path exists. `UdpRelay` and `UdpPacketPipeline` are experimental and not connected to live traffic.
+
+**CI evidence:** An inspected older Actions run (`41727178458`) failed because `android.useAndroidX=true` was missing. A later source fix exists, but that old failure is not evidence about current CI status.
+
+### Documentation discipline
+Update this `PROGRESS.md` whenever a meaningful implementation, test, build result, blocker or architectural decision changes. Distinguish source committed, tests written, tests passed, device-tested and production-ready.
