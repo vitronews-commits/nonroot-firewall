@@ -18,10 +18,12 @@
 - [x] GitHub Actions debug build workflow and policy tests (not verified).
 - [x] Regression tests for Wi-Fi/mobile app rule precedence and invalid CIDR input.
 - [x] CI now runs unit tests before assembling the debug APK.
+- [x] Bounded, deduplicated PendingQueue policy model with four tests (not connected to live traffic).
 
 ## Not implemented
 - [ ] Integrate and license-audit NetGuard native forwarding engine.
-- [ ] Packet-to-UID attribution, connection queue, pending approvals and timeouts.
+- [ ] Packet-to-UID attribution, live connection interception, pending approvals and timeouts.
+- [ ] Connect PendingQueue to packet engine; current queue is a pure in-memory model, not a traffic buffer.
 - [ ] Real VPN start/stop and foreground notification.
 - [ ] Per-app rules editing, rule conflict resolution, and production-ready persistence.
 - [ ] Validate build and unit tests on CI.
