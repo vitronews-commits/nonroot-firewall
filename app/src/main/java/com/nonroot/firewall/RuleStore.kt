@@ -20,7 +20,8 @@ class RuleStore(context: Context) {
                     obj.optString("packageName").takeIf { it.isNotBlank() },
                     cidr,
                     obj.optString("network").takeIf { it.isNotBlank() }?.let(NetworkKind::valueOf),
-                    Decision.valueOf(obj.getString("decision"))
+                    Decision.valueOf(obj.getString("decision")),
+                    obj.optInt("port", -1).takeIf { it in 0..65535 }
                 ))
             } catch (_: Exception) { /* Ignore malformed individual records. */ }
         }
@@ -36,6 +37,7 @@ class RuleStore(context: Context) {
                 put("cidr", rule.cidr)
                 put("network", rule.network?.name ?: "")
                 put("decision", rule.decision.name)
+                put("port", rule.port ?: -1)
             })
         }
         return prefs.edit().putString("ip_rules", array.toString()).commit()
