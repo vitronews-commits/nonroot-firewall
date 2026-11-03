@@ -26,6 +26,7 @@ class MainActivity : Activity() {
     private lateinit var screenHost: FrameLayout
     private var appsScrollPosition = 0
     private lateinit var toolbar: TextView
+    private lateinit var refreshAction: TextView
     private val tabIcons = mutableMapOf<String, TextView>()
     private val tabLabels = mutableMapOf<String, TextView>()
     private lateinit var store: RuleStore
@@ -73,11 +74,36 @@ class MainActivity : Activity() {
         rules.addAll(store.load())
         appRules.addAll(appStore.load())
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(250,250,250)) }
-        toolbar = TextView(this).apply {
-            text = "☰    NoRoot Firewall"; textSize = 23f; setTextColor(Color.BLACK)
-            setPadding(dp(20), dp(18), dp(20), dp(18)); setBackgroundColor(Color.rgb(144,202,249))
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.rgb(144, 202, 249))
+            setPadding(dp(12), 0, dp(8), 0)
         }
-        root.addView(toolbar)
+        toolbar = TextView(this).apply {
+            text = "☰    NonRoot Firewall"
+            textSize = 22f
+            setTextColor(Color.BLACK)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), 0, 0, 0)
+        }
+        topBar.addView(toolbar, LinearLayout.LayoutParams(0, dp(64), 1f))
+        refreshAction = TextView(this).apply {
+            text = "⟳"
+            textSize = 34f
+            gravity = Gravity.CENTER
+            setTextColor(Color.DKGRAY)
+            contentDescription = "Refresh installed applications"
+            visibility = View.GONE
+            setOnClickListener {
+                if (!appsLoading) {
+                    loadAppsAsync()
+                    Toast.makeText(this@MainActivity, "Checking installed apps…", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        topBar.addView(refreshAction, LinearLayout.LayoutParams(dp(52), dp(64)))
+        root.addView(topBar)
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         screenHost = FrameLayout(this)
         screenHost.addView(ScrollView(this).apply { addView(content) })
@@ -184,7 +210,8 @@ class MainActivity : Activity() {
         screenHost.removeAllViews()
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         screenHost.addView(ScrollView(this).apply { addView(content) })
-        toolbar.text = if (detailPackage == null) "☰    NoRoot Firewall" else "‹    App Detail"
+        toolbar.text = if (detailPackage == null) "☰    NonRoot Firewall" else "‹    App Detail"
+        refreshAction.visibility = if (page == "Apps" && detailPackage == null) View.VISIBLE else View.GONE
         toolbar.setOnClickListener(if (detailPackage != null) android.view.View.OnClickListener {
             detailPackage = null; render()
         } else null)
@@ -264,21 +291,6 @@ class MainActivity : Activity() {
             })
         }
         content.addView(search)
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        actions.addView(Button(this).apply {
-            text = "Refresh"
-            setOnClickListener {
-                if (!appsLoading) loadAppsAsync()
-                Toast.makeText(this@MainActivity, "Checking installed apps…", Toast.LENGTH_SHORT).show()
-            }
-        })
-        actions.addView(TextView(this).apply {
-            text = if (appsLoading) "Scanning…" else "Cached catalog"
-            textSize = 12f
-            setPadding(dp(12), 0, 0, 0)
-            setTextColor(Color.DKGRAY)
-        })
-        content.addView(actions)
         content.addView(CheckBox(this).apply {
             text = "Show system applications"
             isChecked = showSystemApps
