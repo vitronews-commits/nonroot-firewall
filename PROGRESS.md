@@ -117,3 +117,10 @@
 - [x] CI verifies APK file exists, has nonzero size, and passes unzip archive integrity check before artifact upload.
 - [x] CI treats missing APK artifact as an error.
 - [ ] A passing GitHub Actions run has not been observed in this session; the APK remains unverified on device.
+
+## Apps permissions list polish
+- [x] Added explicit Wi-Fi, Mobile, and Application column headers.
+- [x] Colored app permissions green/allow, red/block, gray/pending.
+- [x] Added screen-reader content descriptions for tappable permission indicators.
+- [ ] No successful CI run could be verified: commit-workflow lookup returned no runs (it only exposes pull-request runs); GitHub Actions page was not accessible from this environment.
+- [ ] Real-device screenshot comparison and VPN engine remain pending.
