@@ -222,3 +222,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] Added three lifecycle and input-validation tests.
 - [ ] Not integrated with `UdpRelay`, `UdpSocketPool` or TUN; caller must supply a protected socket.
 - [ ] Verify new CI build and tests before integration. VPN remains inactive.
+
+## Optional persistent UDP pipeline — 2026-11-04
+- [x] Added optional UdpSessionManager injection into UdpPacketPipeline; policy and transport gate remain mandatory.
+- [x] Authorized UDP packets use persistent sessions when injected, otherwise existing one-shot relay.
+- [x] UDP reply callback exceptions no longer terminate the session receive loop.
+- [ ] Verify CI and integration tests; no VPN/TUN activation.
