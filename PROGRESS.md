@@ -69,3 +69,10 @@
 - [ ] Replace Wi-Fi/Mobile spinners with the exact compact three-state controls from the reference video.
 - [ ] CI build and visual screenshot comparison on Android 15 are not yet verified.
 - [ ] VPN packet forwarding and live Pending/Logs remain unimplemented.
+
+## Compact controls and navigation milestone
+- [x] Replaced Wi-Fi/Mobile dropdown spinners in New Custom Filter with compact three-state tap controls (Pending/Allow/Block).
+- [x] Fixed bottom tab active-state highlighting after navigation.
+- [x] App Detail now uses the main toolbar title/back navigation rather than a duplicate in-content heading.
+- [ ] Replace provisional text symbols with faithful vector icons.
+- [ ] Run CI build and inspect APK on Android 15; compilation not verified in this update.
