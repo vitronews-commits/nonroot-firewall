@@ -36,6 +36,7 @@ class MainActivity : Activity() {
     private var lastCatalogCheck = 0L
     private var showSystemApps = true
     private var appSearch = ""
+    private var pendingSearch: Runnable? = null
     private var appGeneration = 0
     private data class AppEntry(val pkg: String, val label: String, val system: Boolean)
     private var detailPackage: String? = null
@@ -125,6 +126,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         appGeneration++
+        pendingSearch?.let { mainHandler.removeCallbacks(it) }
         appExecutor.shutdownNow()
         super.onDestroy()
     }
@@ -229,7 +231,9 @@ class MainActivity : Activity() {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     appSearch = s?.toString().orEmpty()
-                    updateAppRows()
+                    pendingSearch?.let { mainHandler.removeCallbacks(it) }
+                    pendingSearch = Runnable { if (page == "Apps" && detailPackage == null) updateAppRows() }
+                    mainHandler.postDelayed(pendingSearch!!, 180)
                 }
                 override fun afterTextChanged(s: android.text.Editable?) {}
             })
