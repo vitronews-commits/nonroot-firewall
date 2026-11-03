@@ -76,3 +76,12 @@
 - [x] App Detail now uses the main toolbar title/back navigation rather than a duplicate in-content heading.
 - [ ] Replace provisional text symbols with faithful vector icons.
 - [ ] Run CI build and inspect APK on Android 15; compilation not verified in this update.
+
+## App identity milestone
+- [x] App rows and App Detail use PackageManager labels/icons when package is visible and installed.
+- [x] Android manifest declares narrow launcher-app visibility via queries instead of broad QUERY_ALL_PACKAGES.
+- [x] Missing/uninstalled/invisible packages show package name and fallback icon.
+- [x] Bottom navigation height uses dp rather than raw pixels.
+- [ ] Full installed-app listing is not implemented; Apps currently lists saved app rules only.
+- [ ] System/non-launcher packages may not resolve under package visibility restrictions.
+- [ ] Android CI build and device screenshot validation still unverified.
