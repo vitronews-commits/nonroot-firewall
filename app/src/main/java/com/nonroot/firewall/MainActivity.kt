@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.graphics.Color
 import android.text.InputType
 import android.view.Gravity
+import android.view.View
 import android.widget.*
 import android.content.pm.PackageManager
 import android.content.Intent
