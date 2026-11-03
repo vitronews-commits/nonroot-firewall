@@ -15,7 +15,9 @@
 - [x] Filters UI: add/remove IP/CIDR allow/block rules with optional package and network.
 - [x] Local rule persistence using SharedPreferences (synchronous commit).
 - [x] Numeric IPv4/IPv6 CIDR validation; no hostname lookup for entered rules.
-- [x] GitHub Actions debug build workflow and initial policy tests (not verified).
+- [x] GitHub Actions debug build workflow and policy tests (not verified).
+- [x] Regression tests for Wi-Fi/mobile app rule precedence and invalid CIDR input.
+- [x] CI now runs unit tests before assembling the debug APK.
 
 ## Not implemented
 - [ ] Integrate and license-audit NetGuard native forwarding engine.
