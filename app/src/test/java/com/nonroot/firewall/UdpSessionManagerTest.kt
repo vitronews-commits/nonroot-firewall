@@ -35,6 +35,19 @@ class UdpSessionManagerTest {
         }
     }
 
+    @Test fun invalidPortsCannotOpenSocket() {
+        var opened = 0
+        UdpSessionManager({
+            opened++
+            DatagramSocket(null).apply { bind(InetSocketAddress(0)) }
+        }, {}).use { manager ->
+            val invalid = request().copy(destinationPort = 0)
+            val invalidKey = key().copy(destinationPort = 0)
+            assertFalse(manager.submit(invalidKey, invalid, PacketPolicy.Result.ALLOW))
+            assertEquals(0, opened)
+        }
+    }
+
     @Test fun closedManagerRejectsNewSessions() {
         val manager = UdpSessionManager({
             DatagramSocket(null).apply { bind(InetSocketAddress(0)) }
