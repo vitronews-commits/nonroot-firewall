@@ -70,7 +70,7 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(250,250,250)) }
         toolbar = TextView(this).apply {
             text = "☰    NoRoot Firewall"; textSize = 23f; setTextColor(Color.BLACK)
-            setPadding(20, 28, 20, 28); setBackgroundColor(Color.rgb(144,202,249))
+            setPadding(dp(20), dp(18), dp(20), dp(18)); setBackgroundColor(Color.rgb(144,202,249))
         }
         root.addView(toolbar)
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -79,7 +79,7 @@ class MainActivity : Activity() {
         root.addView(screenHost, LinearLayout.LayoutParams(-1, 0, 1f))
         val tabs = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.rgb(66,165,245))
+            setBackgroundColor(Color.rgb(58,158,238))
         }
         for ((name, icon) in listOf("Home" to "⌂", "Pending" to "➜", "Apps" to "▦", "Global" to "◉", "Logs" to "◷")) {
             val tab = LinearLayout(this).apply {
@@ -91,7 +91,7 @@ class MainActivity : Activity() {
                 text = icon
                 textSize = 27f
                 gravity = Gravity.CENTER
-                setTextColor(if (page == name) Color.WHITE else Color.rgb(185,220,246))
+                setTextColor(if (page == name) Color.WHITE else Color.rgb(163,207,241))
             }
             val labelView = TextView(this).apply {
                 text = name
