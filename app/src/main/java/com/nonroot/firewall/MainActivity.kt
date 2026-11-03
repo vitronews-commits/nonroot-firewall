@@ -12,13 +12,17 @@ import android.widget.*
 class MainActivity : Activity() {
     private lateinit var content: LinearLayout
     private lateinit var store: RuleStore
+    private lateinit var appStore: AppRuleStore
+    private val appRules = mutableListOf<AppRule>()
     private val rules = mutableListOf<IpRule>()
     private var page = "Home"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = RuleStore(this)
+        appStore = AppRuleStore(this)
         rules.addAll(store.load())
+        appRules.addAll(appStore.load())
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.WHITE) }
         root.addView(TextView(this).apply {
             text = "NonRoot Firewall"; textSize = 20f; setTextColor(Color.WHITE)
@@ -49,7 +53,30 @@ class MainActivity : Activity() {
         when (page) {
             "Home" -> message("Firewall is stopped\n\nRules are saved but NOT enforced. VPN engine not integrated.")
             "Pending" -> message("No live pending connections. Packet capture is not implemented yet.")
-            "Apps" -> message("Per-app Wi-Fi / Mobile access: upcoming.")
+            "Apps" -> {
+                message("App Rules — saved locally (not yet active)")
+                content.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
+                appRules.forEachIndexed { index, rule ->
+                    content.addView(Button(this).apply {
+                        text = "${rule.decision}: ${rule.packageName} • ${rule.network ?: "All networks"}"
+                        isAllCaps = false
+                        setOnClickListener {
+                            AlertDialog.Builder(this@MainActivity).setTitle("Remove app rule?")
+                                .setMessage(text)
+                                .setPositiveButton("Remove") { _, _ ->
+                                    val previous = appRules.toList()
+                                    appRules.removeAt(index)
+                                    if (!appStore.save(appRules)) {
+                                        appRules.clear(); appRules.addAll(previous)
+                                        Toast.makeText(this@MainActivity, "Unable to save", Toast.LENGTH_LONG).show()
+                                    }
+                                    render()
+                                }
+                                .setNegativeButton("Cancel", null).show()
+                        }
+                    })
+                }
+            }
             "Log" -> message("Connection history: upcoming.")
             "Filters" -> {
                 message("IP Filters — saved locally (not yet active)")
@@ -120,4 +147,42 @@ class MainActivity : Activity() {
         }
         dialog.show()
     }
+    private fun addAppRule() {
+        val form = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 8) }
+        val pkg = EditText(this).apply { hint = "Package name (e.g. com.android.chrome)" }
+        val network = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("All networks", "Wi-Fi", "Mobile"))
+        }
+        val decision = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("BLOCK", "ALLOW"))
+        }
+        form.addView(pkg); form.addView(network); form.addView(decision)
+        val dialog = AlertDialog.Builder(this).setTitle("Add app rule").setView(form)
+            .setNegativeButton("Cancel", null).setPositiveButton("Save", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val name = pkg.text.toString().trim()
+                if (!name.matches(Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+"))) {
+                    pkg.error = "Enter a valid package name"; return@setOnClickListener
+                }
+                val kind = when (network.selectedItemPosition) {
+                    1 -> NetworkKind.WIFI
+                    2 -> NetworkKind.MOBILE
+                    else -> null
+                }
+                val value = if (decision.selectedItemPosition == 0) Decision.BLOCK else Decision.ALLOW
+                val previous = appRules.toList()
+                appRules.removeAll { it.packageName == name && it.network == kind }
+                appRules.add(AppRule(name, kind, value))
+                if (!appStore.save(appRules)) {
+                    appRules.clear(); appRules.addAll(previous)
+                    Toast.makeText(this, "Unable to save", Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
+                }
+                dialog.dismiss(); render()
+            }
+        }
+        dialog.show()
+    }
+
 }
