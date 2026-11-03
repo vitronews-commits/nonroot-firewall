@@ -27,7 +27,7 @@ class UdpFlowSession(
         require(socket.isBound && !socket.isClosed)
         val parts = request.destinationIp.split('.')
         require(parts.size == 4 && parts.all { p ->
-            p.isNotEmpty() && p.all { it in '0'..'9' } && p.toIntOrNull() in 0..255
+            p.isNotEmpty() && p.all { it in '0'..'9' } && (p.toIntOrNull() ?: -1) in 0..255
         })
         val remote = InetAddress.getByAddress(ByteArray(4) { parts[it].toInt().toByte() })
         socket.connect(InetSocketAddress(remote, request.destinationPort))
