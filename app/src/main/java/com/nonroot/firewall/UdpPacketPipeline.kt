@@ -8,7 +8,8 @@ package com.nonroot.firewall
 class UdpPacketPipeline(
     private val engine: RuleEngine,
     private val relay: UdpRelay,
-    private val transportReady: () -> Boolean
+    private val transportReady: () -> Boolean,
+    private val sessionManager: UdpSessionManager? = null
 ) {
     enum class Status {
         QUEUED, BLOCKED, PENDING, UNATTRIBUTED, UNSUPPORTED, NOT_READY, OVERLOADED
