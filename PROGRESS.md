@@ -254,3 +254,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] Added onRulesChanged() to close all active UDP sessions (68274d98).
 - [x] Added regression test for session and socket cleanup (4e17ee2a).
 - [ ] Wire hook to actual rule persistence/UI events and verify CI; VPN remains inactive.
+
+## Rule change event bridge — 2026-11-04
+- [x] Added process-local RuleChangeBus with listener registration and isolation (f5c5a98d).
+- [x] MainActivity emits events after successful app/IP rule saves (69d18c03).
+- [x] Added listener delivery and failure isolation tests (c72d5b46).
+- [ ] Attach active engine session manager listener when engine exists; CI unverified, VPN inactive.
