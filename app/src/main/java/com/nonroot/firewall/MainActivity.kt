@@ -188,8 +188,8 @@ class MainActivity : Activity() {
             val wifi = effectiveAppDecision(pkg, NetworkKind.WIFI)
             val mobile = effectiveAppDecision(pkg, NetworkKind.MOBILE)
             row.addView(appIcon(pkg), LinearLayout.LayoutParams(dp(48), dp(54)))
-            row.addView(TextView(this).apply { text = marker(wifi); textSize = 25f; gravity = Gravity.CENTER; setOnClickListener { cycleAppAccess(pkg, NetworkKind.WIFI) } }, LinearLayout.LayoutParams(dp(46), dp(54)))
-            row.addView(TextView(this).apply { text = marker(mobile); textSize = 25f; gravity = Gravity.CENTER; setOnClickListener { cycleAppAccess(pkg, NetworkKind.MOBILE) } }, LinearLayout.LayoutParams(dp(46), dp(54)))
+            row.addView(TextView(this).apply { text = marker(wifi); textSize = 25f; gravity = Gravity.CENTER; setTextColor(decisionColor(wifi)); contentDescription = "Wi-Fi: ${wifi ?: Decision.PENDING}. Tap to change"; setOnClickListener { cycleAppAccess(pkg, NetworkKind.WIFI) } }, LinearLayout.LayoutParams(dp(46), dp(54)))
+            row.addView(TextView(this).apply { text = marker(mobile); textSize = 25f; gravity = Gravity.CENTER; setTextColor(decisionColor(mobile)); contentDescription = "Mobile: ${mobile ?: Decision.PENDING}. Tap to change"; setOnClickListener { cycleAppAccess(pkg, NetworkKind.MOBILE) } }, LinearLayout.LayoutParams(dp(46), dp(54)))
             row.addView(TextView(this).apply { text = appInfo(pkg).first; textSize = 16f; gravity = Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams(0, dp(54), 1f))
             row.addView(TextView(this).apply { text = "›"; textSize = 30f })
             row.setOnClickListener { detailPackage = pkg; render() }
@@ -197,6 +197,12 @@ class MainActivity : Activity() {
             content.addView(View(this).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(-1, 1))
         }
         content.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
+    }
+
+    private fun decisionColor(decision: Decision?): Int = when (decision) {
+        Decision.ALLOW -> Color.rgb(46, 125, 50)
+        Decision.BLOCK -> Color.rgb(198, 40, 40)
+        else -> Color.GRAY
     }
 
     private fun marker(decision: Decision?): String = when (decision) {
