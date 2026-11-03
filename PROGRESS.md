@@ -41,3 +41,13 @@
 - No hostname DNS resolution on the packet processing thread.
 - CIDR and package attribution require tests before enforcement.
 - NetGuard GPL-3.0 obligations must be met if its code is incorporated.
+
+## Classic UI reference implementation (2026-11-03)
+- [x] Five-tab blue navigation and pale-blue toolbar based on user-provided screenshots.
+- [x] Classic-style Apps list with Wi-Fi/mobile indicators and App Detail navigation.
+- [x] Custom per-app IP filter list with delete and add actions.
+- [x] Global Pre-Filters rows with Wi-Fi/mobile markers and delete actions.
+- [ ] Pixel-perfect screenshot comparison on target device; icons, spacing and font are approximations.
+- [ ] Populate Apps with actual installed-app names/icons (currently shows saved package rules only).
+- [ ] Pending and Logs need real packet engine data; no fake activity should be displayed.
+- [ ] Build/CI verification remains outstanding.
