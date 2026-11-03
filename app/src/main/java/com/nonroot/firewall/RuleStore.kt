@@ -5,7 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** Local-only persistence. No networking or VPN side effects. */
-class RuleStore(context: Context) {
+class RuleStore(context: Context, private val onRulesSaved: () -> Unit = {}) {
     private val prefs = context.getSharedPreferences("firewall_rules", Context.MODE_PRIVATE)
 
     fun load(): MutableList<IpRule> {
@@ -40,6 +40,8 @@ class RuleStore(context: Context) {
                 put("port", rule.port ?: -1)
             })
         }
-        return prefs.edit().putString("ip_rules", array.toString()).commit()
+        val saved = prefs.edit().putString("ip_rules", array.toString()).commit()
+        if (saved) onRulesSaved()
+        return saved
     }
 }
