@@ -216,3 +216,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] Added `activeSocket()` for non-allocating lookup and synchronized failed-flow eviction (096242b8).
 - [ ] New regression test write was blocked by tooling; test not committed.
 - [ ] CI verification and persistent relay integration remain pending.
+
+## Persistent UDP receive worker — 2026-11-04
+- [x] Added `UdpFlowSession` with one receive loop per socket, numeric IPv4 endpoint, synchronized sends, idle timeout and close cleanup.
+- [x] Added three lifecycle and input-validation tests.
+- [ ] Not integrated with `UdpRelay`, `UdpSocketPool` or TUN; caller must supply a protected socket.
+- [ ] Verify new CI build and tests before integration. VPN remains inactive.
