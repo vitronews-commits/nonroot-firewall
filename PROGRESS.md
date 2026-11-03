@@ -182,3 +182,11 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] Inspected failed GitHub Actions run 41735904929: `:app:compileDebugKotlin` failed at `UdpRelay.kt:30:9` (`Unresolved reference 'Executors'`).
 - [x] Restored `java.util.concurrent.Executors` import in `UdpRelay.kt` (commit `8402e0bd`).
 - [ ] Verify a new GitHub Actions run passes compilation, unit tests and APK assembly. Fix is committed but not yet verified.
+
+## Persistent flow resource groundwork — 2026-11-04
+- [x] Added generic `FlowResourceTable<T : Closeable>` for bounded per-flow resource reuse, idle expiry and deterministic cleanup.
+- [x] Added four unit tests for reuse, capacity, expiry, shutdown and backwards-clock handling.
+- [ ] CI compilation and test execution for these commits still need confirmation.
+- [ ] This table does not yet create sockets, send datagrams or manage receive workers; rejected registrations remain caller-owned and must be closed by their caller.
+- [ ] Integrate protected UDP sockets with the table, implement per-flow receive loops, serialized TUN output and safe shutdown.
+- [ ] Keep `FirewallVpnService` inactive until complete transport and return-path verification.
