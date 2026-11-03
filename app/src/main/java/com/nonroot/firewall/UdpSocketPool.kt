@@ -30,7 +30,20 @@ class UdpSocketPool(
         return candidate
     }
 
+    /** Evict a failed flow. */
+    @Synchronized
     fun remove(key: FlowKey): Boolean = table.remove(key)
+
+    /** Look up without allocating a new socket. */
+    @Synchronized
+    fun activeSocket(key: FlowKey, nowMs: Long): DatagramSocket? {
+        val current = table.get(key, nowMs) ?: return null
+        if (current.isClosed) {
+            table.remove(key)
+            return null
+        }
+        return current
+    }
     fun expire(nowMs: Long): Int = table.expire(nowMs)
     fun size(): Int = table.size()
     override fun close() = table.close()
