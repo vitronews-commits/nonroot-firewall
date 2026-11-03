@@ -23,21 +23,39 @@ class MainActivity : Activity() {
         appStore = AppRuleStore(this)
         rules.addAll(store.load())
         appRules.addAll(appStore.load())
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.WHITE) }
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(250,250,250)) }
         root.addView(TextView(this).apply {
-            text = "NonRoot Firewall"; textSize = 20f; setTextColor(Color.WHITE)
-            setPadding(20, 22, 20, 22); setBackgroundColor(Color.rgb(55, 55, 55))
+            text = "☰    NoRoot Firewall"; textSize = 23f; setTextColor(Color.BLACK)
+            setPadding(20, 28, 20, 28); setBackgroundColor(Color.rgb(144,202,249))
         })
-        val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(20, 22, 20, 20) }
-        for (name in listOf("Home", "Pending", "Apps", "Filters", "Log")) {
-            tabs.addView(Button(this).apply {
-                text = name; textSize = 10f; isAllCaps = false; setPadding(0, 0, 0, 0)
+        content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = ScrollView(this).apply { addView(content) }
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        val tabs = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.rgb(66,165,245))
+        }
+        for ((name, icon) in listOf("Home" to "⌂", "Pending" to "➜", "Apps" to "▦", "Global" to "◉", "Logs" to "◷")) {
+            val tab = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
                 setOnClickListener { page = name; render() }
-            }, LinearLayout.LayoutParams(0, 54, 1f))
+            }
+            tab.addView(TextView(this).apply {
+                text = icon
+                textSize = 27f
+                gravity = Gravity.CENTER
+                setTextColor(if (page == name) Color.WHITE else Color.rgb(185,220,246))
+            })
+            tab.addView(TextView(this).apply {
+                text = name
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+            })
+            tabs.addView(tab, LinearLayout.LayoutParams(0, 72, 1f))
         }
         root.addView(tabs)
-        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         render()
     }
@@ -52,7 +70,7 @@ class MainActivity : Activity() {
         content.removeAllViews()
         when (page) {
             "Home" -> message("Firewall is stopped\n\nRules are saved but NOT enforced. VPN engine not integrated.")
-            "Pending" -> message("No live pending connections. Packet capture is not implemented yet.")
+            "Pending" -> message("No live pending accesses. VPN engine is not integrated.")
             "Apps" -> {
                 message("App Rules — saved locally (not yet active)")
                 content.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
@@ -77,13 +95,15 @@ class MainActivity : Activity() {
                     })
                 }
             }
-            "Log" -> message("Connection history: upcoming.")
-            "Filters" -> {
+            "Logs" -> message("No connection logs. Live packet capture is not implemented.")
+            "Global" -> {
+                header("🌐     Global Filters")
+                section("◆   ▥             Pre-Filters")
                 message("IP Filters — saved locally (not yet active)")
                 content.addView(Button(this).apply { text = "+ Add IP rule"; setOnClickListener { addRule() } })
-                rules.forEachIndexed { index, rule ->
+                rules.filter { it.packageName == null }.forEachIndexed { index, rule ->
                     content.addView(Button(this).apply {
-                        text = "${rule.decision}: ${rule.cidr}  •  ${rule.packageName ?: "All apps"}  •  ${rule.network ?: "All networks"}"
+                        text = "${if (rule.decision == Decision.ALLOW) "☑" else "☒"}     ${if (rule.decision == Decision.ALLOW) "☑" else "☒"}       ${rule.cidr}             DELETE"
                         isAllCaps = false
                         setOnClickListener {
                             AlertDialog.Builder(this@MainActivity)
@@ -102,8 +122,49 @@ class MainActivity : Activity() {
                         }
                     })
                 }
+                section("◆   ▥             Post-Filters")
+                message("No post-filters configured")
             }
         }
+    }
+
+    private fun header(value: String) {
+        content.addView(TextView(this).apply {
+            text = value; textSize = 21f; setTextColor(Color.DKGRAY)
+            setPadding(20, 26, 12, 26)
+        })
+    }
+
+    private fun section(value: String) {
+        content.addView(TextView(this).apply {
+            text = value; textSize = 19f; setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(66,66,66)); setPadding(16, 12, 16, 12)
+        })
+    }
+
+    private fun homeScreen() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(20, 40, 20, 20)
+        }
+        box.addView(Button(this).apply {
+            text = "START"; textSize = 28f; isEnabled = false
+        }, LinearLayout.LayoutParams(240, 160))
+        box.addView(TextView(this).apply {
+            text = "Click OK when it tries to create VPN connection"
+            textSize = 16f; gravity = Gravity.CENTER; setPadding(0, 14, 0, 10)
+        })
+        box.addView(CheckBox(this).apply { text = "Auto start on boot"; isEnabled = false })
+        box.addView(Button(this).apply {
+            text = "STOP"; textSize = 28f; isEnabled = false
+            setBackgroundColor(Color.rgb(211,47,47)); setTextColor(Color.WHITE)
+        }, LinearLayout.LayoutParams(240, 110).apply { topMargin = 65 })
+        box.addView(TextView(this).apply {
+            text = "Firewall engine not integrated — protection OFF"
+            setTextColor(Color.RED); gravity = Gravity.CENTER; setPadding(0, 24, 0, 0)
+        })
+        content.addView(box)
     }
 
     private fun addRule() {
