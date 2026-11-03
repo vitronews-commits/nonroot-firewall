@@ -233,3 +233,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] Restored trailing-lambda constructor compatibility after optional manager injection (11c6fc6c).
 - [x] Added regression test ensuring manager cannot bypass the transport-ready gate (499ab7ba).
 - [ ] CI verification pending; VPN remains inactive.
+
+## UDP loopback integration test — 2026-11-04
+- [x] Added local IPv4 UDP responder integration test checking authorized send, received reply and IPv4/UDP checksums (111708f7, 3c906e9f).
+- [ ] CI execution not yet confirmed. This is a test, not evidence of a passing build.
+- [ ] VPN/TUN remains inactive; protected-socket device integration still pending.
