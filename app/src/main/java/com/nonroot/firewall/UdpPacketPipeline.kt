@@ -21,6 +21,7 @@ class UdpPacketPipeline(
     ): Status {
         val header = PacketParser.parse(rawPacket) ?: return Status.UNSUPPORTED
         if (header.protocol != 17 || header.fragmented) return Status.UNSUPPORTED
+        if (!UdpChecksums.verify(rawPacket)) return Status.UNSUPPORTED
         val datagram = UdpDatagram.parseIpv4(rawPacket) ?: return Status.UNSUPPORTED
         val policy = PacketPolicy.evaluateWithOwner(header, ownerPackages, network, engine)
         val gate = ForwardingGate(transportReady)
