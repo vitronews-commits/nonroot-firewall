@@ -1,0 +1,34 @@
+workflows:
+  android-debug:
+    name: NonRoot Firewall - Debug APK
+    instance_type: linux_x2
+    max_build_duration: 60
+    environment:
+      java: 17
+    scripts:
+      - name: Prepare Gradle 8.9
+        script: |
+          set -eu
+          curl -fL --retry 3 -o /tmp/gradle-8.9-bin.zip https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          unzip -q /tmp/gradle-8.9-bin.zip -d /tmp
+          /tmp/gradle-8.9/bin/gradle --version
+      - name: Build and test Android debug APK
+        script: |
+          set -eu
+          /tmp/gradle-8.9/bin/gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Verify APK integrity
+        script: |
+          set -eu
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -t app/build/outputs/apk/debug/app-debug.apk | tail -n 1
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+    artifacts:
+      - app/build/outputs/apk/debug/*.apk
+      - app/build/reports/tests/testDebugUnitTest/**/*
+      - app/build/test-results/testDebugUnitTest/**/*
+    publishing:
+      email:
+        recipients: []
+        notify:
+          success: false
+          failure: false
