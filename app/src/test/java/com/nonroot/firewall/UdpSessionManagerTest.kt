@@ -62,6 +62,22 @@ class UdpSessionManagerTest {
         }
     }
 
+    @Test fun capacityLimitRejectsSecondDistinctFlow() {
+        val sockets = mutableListOf<DatagramSocket>()
+        UdpSessionManager({
+            DatagramSocket(null).apply {
+                bind(InetSocketAddress(0))
+                sockets.add(this)
+            }
+        }, {}, capacity = 1).use { manager ->
+            assertTrue(manager.submit(key(), request(), PacketPolicy.Result.ALLOW))
+            assertFalse(manager.submit(key(12001), request(12001), PacketPolicy.Result.ALLOW))
+            assertEquals(1, sockets.size)
+            assertEquals(1, manager.activeCount())
+        }
+        assertTrue(sockets.all { it.isClosed })
+    }
+
     @Test fun invalidPortsCannotOpenSocket() {
         var opened = 0
         UdpSessionManager({
