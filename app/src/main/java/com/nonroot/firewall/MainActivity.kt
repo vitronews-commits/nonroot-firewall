@@ -250,14 +250,32 @@ class MainActivity : Activity() {
             setText(prefillPackage ?: "")
             isEnabled = prefillPackage == null
         }
-        val wifi = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity,
-                android.R.layout.simple_spinner_dropdown_item, listOf("Wi-Fi: Pending", "Wi-Fi: Allow", "Wi-Fi: Block"))
+        // Compact three-state buttons: Pending → Allow → Block → Pending.
+        var wifiChoice = 0
+        var mobileChoice = 0
+        fun symbol(value: Int): String = when (value) {
+            1 -> "☑"
+            2 -> "☒"
+            else -> "□"
         }
-        val mobile = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity,
-                android.R.layout.simple_spinner_dropdown_item, listOf("Mobile: Pending", "Mobile: Allow", "Mobile: Block"))
+        fun tint(value: Int): Int = when (value) {
+            1 -> Color.rgb(76, 175, 80)
+            2 -> Color.rgb(211, 47, 47)
+            else -> Color.GRAY
         }
+        fun stateButton(onAdvance: () -> Int): TextView = TextView(this).apply {
+            textSize = 28f
+            gravity = Gravity.CENTER
+            text = symbol(0)
+            setTextColor(Color.GRAY)
+            setOnClickListener {
+                val state = onAdvance()
+                text = symbol(state)
+                setTextColor(tint(state))
+            }
+        }
+        val wifi = stateButton { wifiChoice = (wifiChoice + 1) % 3; wifiChoice }
+        val mobile = stateButton { mobileChoice = (mobileChoice + 1) % 3; mobileChoice }
         val addressRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         addressRow.addView(TextView(this).apply { text = "Address"; textSize = 14f }, LinearLayout.LayoutParams(80, -2))
         addressRow.addView(address, LinearLayout.LayoutParams(0, -2, 1f))
@@ -268,9 +286,15 @@ class MainActivity : Activity() {
         portRow.addView(portMenu, LinearLayout.LayoutParams(56, -2))
         form.addView(addressRow); form.addView(portRow)
         if (prefillPackage == null) form.addView(pkg)
-        val modes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        modes.addView(wifi, LinearLayout.LayoutParams(0, -2, 1f))
-        modes.addView(mobile, LinearLayout.LayoutParams(0, -2, 1f))
+        val modes = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 12, 0, 16)
+        }
+        modes.addView(TextView(this).apply { text = "◆"; textSize = 25f; setTextColor(Color.rgb(33,150,243)) })
+        modes.addView(wifi, LinearLayout.LayoutParams(56, 48))
+        modes.addView(TextView(this).apply { text = "▥"; textSize = 27f; setTextColor(Color.rgb(33,150,243)) })
+        modes.addView(mobile, LinearLayout.LayoutParams(56, 48))
         form.addView(modes)
         val dialog = AlertDialog.Builder(this).setTitle("New Custom Filter")
             .setView(form).setNegativeButton("CANCEL", null)
@@ -284,17 +308,17 @@ class MainActivity : Activity() {
                 if (rawPort != "*" && (parsedPort == null || parsedPort !in 0..65535)) {
                     port.error = "Enter 0–65535 or *"; return@setOnClickListener
                 }
-                if (wifi.selectedItemPosition == 0 && mobile.selectedItemPosition == 0) {
+                if (wifiChoice == 0 && mobileChoice == 0) {
                     Toast.makeText(this, "Choose Allow or Block for at least one network", Toast.LENGTH_LONG).show()
                     return@setOnClickListener
                 }
                 val name = pkg.text.toString().trim().ifBlank { null }
                 val additions = mutableListOf<IpRule>()
                 fun choice(index: Int): Decision = if (index == 1) Decision.ALLOW else Decision.BLOCK
-                if (wifi.selectedItemPosition != 0)
-                    additions.add(IpRule(name, cidr, NetworkKind.WIFI, choice(wifi.selectedItemPosition), parsedPort))
-                if (mobile.selectedItemPosition != 0)
-                    additions.add(IpRule(name, cidr, NetworkKind.MOBILE, choice(mobile.selectedItemPosition), parsedPort))
+                if (wifiChoice != 0)
+                    additions.add(IpRule(name, cidr, NetworkKind.WIFI, choice(wifiChoice), parsedPort))
+                if (mobileChoice != 0)
+                    additions.add(IpRule(name, cidr, NetworkKind.MOBILE, choice(mobileChoice), parsedPort))
                 val old = rules.toList()
                 rules.addAll(additions)
                 if (!store.save(rules)) {
