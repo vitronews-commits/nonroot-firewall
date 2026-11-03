@@ -14,9 +14,15 @@ class UdpSocketPool(
     @Synchronized
     fun socket(key: FlowKey, nowMs: Long): DatagramSocket? {
         if (key.protocol != 17) return null
-        table.get(key, nowMs)?.let { return it }
+        table.get(key, nowMs)?.let {
+            if (!it.isClosed) return it
+            table.remove(key)
+        }
         val candidate = try { openProtectedSocket() } catch (_: Exception) { return null }
-        if (candidate.isClosed) return null
+        if (candidate.isClosed) {
+            candidate.close()
+            return null
+        }
         if (!table.add(key, candidate, nowMs)) {
             candidate.close()
             return table.get(key, nowMs)
@@ -24,6 +30,7 @@ class UdpSocketPool(
         return candidate
     }
 
+    fun remove(key: FlowKey): Boolean = table.remove(key)
     fun expire(nowMs: Long): Int = table.expire(nowMs)
     fun size(): Int = table.size()
     override fun close() = table.close()
