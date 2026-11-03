@@ -5,7 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** Persist per-app decisions separately from IP/CIDR rules. */
-class AppRuleStore(context: Context) {
+class AppRuleStore(context: Context, private val onRulesSaved: () -> Unit = {}) {
     private val prefs = context.getSharedPreferences("firewall_rules", Context.MODE_PRIVATE)
 
     fun load(): MutableList<AppRule> {
@@ -35,6 +35,8 @@ class AppRuleStore(context: Context) {
                 put("decision", rule.decision.name)
             })
         }
-        return prefs.edit().putString("app_rules", array.toString()).commit()
+        val saved = prefs.edit().putString("app_rules", array.toString()).commit()
+        if (saved) onRulesSaved()
+        return saved
     }
 }
