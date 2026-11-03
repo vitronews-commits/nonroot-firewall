@@ -94,6 +94,8 @@ class UdpSessionManager(
         return removed
     }
 
+    fun onRulesChanged(): Int = revokeWhere { true }
+
     @Synchronized
     fun activeCount(): Int = sessions.size
 
