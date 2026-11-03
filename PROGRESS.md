@@ -111,3 +111,9 @@
 - [x] App Detail Wi-Fi and Mobile indicators are interactive, sharing the same persisted three-state app access controls as Apps.
 - [x] App Detail indicators show current effective app-rule state with allow/block/pending colors.
 - [ ] CI build and Android 15 device verification still pending. Commit combined status endpoint returned no statuses, which does not prove Actions success or failure.
+
+## Build integrity and package visibility hardening
+- [x] PackageManager app label/icon discovery and launcher enumeration now handle SecurityException gracefully.
+- [x] CI verifies APK file exists, has nonzero size, and passes unzip archive integrity check before artifact upload.
+- [x] CI treats missing APK artifact as an error.
+- [ ] A passing GitHub Actions run has not been observed in this session; the APK remains unverified on device.
