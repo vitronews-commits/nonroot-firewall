@@ -12,12 +12,17 @@
 - [x] Five-tab placeholder UI.
 - [x] Pure Kotlin rule decision model with default PENDING.
 - [x] VpnService declaration, deliberately inactive.
+- [x] Filters UI: add/remove IP/CIDR allow/block rules with optional package and network.
+- [x] Local rule persistence using SharedPreferences (synchronous commit).
+- [x] Numeric IPv4/IPv6 CIDR validation; no hostname lookup for entered rules.
+- [x] GitHub Actions debug build workflow and initial policy tests (not verified).
 
 ## Not implemented
 - [ ] Integrate and license-audit NetGuard native forwarding engine.
 - [ ] Packet-to-UID attribution, connection queue, pending approvals and timeouts.
 - [ ] Real VPN start/stop and foreground notification.
-- [ ] Rule persistence and editing screens.
+- [ ] Per-app rules editing, rule conflict resolution, and production-ready persistence.
+- [ ] Validate build and unit tests on CI.
 - [ ] IPv4/IPv6 DNS and QUIC leak tests, network switching and Xiaomi-specific tests.
 - [ ] Gradle build and signed APK.
 
