@@ -44,4 +44,18 @@ class RuleEngineTest {
         assertEquals(false, RuleEngine.isValidCidr("256.1.2.3/32"))
         assertEquals(false, RuleEngine.isValidCidr("192.0.2.1/33"))
     }
+
+    @Test fun appRuleOverridesGlobalIpRule() {
+        val engine = RuleEngine()
+        engine.ipRules.add(IpRule(null, "192.0.2.0/24", null, Decision.BLOCK))
+        engine.appRules.add(AppRule("com.android.chrome", null, Decision.ALLOW))
+        assertEquals(Decision.ALLOW, engine.decide(chrome))
+    }
+
+    @Test fun specificAppIpOverridesGeneralAppRule() {
+        val engine = RuleEngine()
+        engine.appRules.add(AppRule("com.android.chrome", null, Decision.BLOCK))
+        engine.ipRules.add(IpRule("com.android.chrome", "192.0.2.15/32", null, Decision.ALLOW))
+        assertEquals(Decision.ALLOW, engine.decide(chrome))
+    }
 }
