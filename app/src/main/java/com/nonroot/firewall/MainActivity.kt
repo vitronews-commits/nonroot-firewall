@@ -16,6 +16,7 @@ class MainActivity : Activity() {
     private val appRules = mutableListOf<AppRule>()
     private val rules = mutableListOf<IpRule>()
     private var page = "Home"
+    private var detailPackage: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,7 +40,7 @@ class MainActivity : Activity() {
             val tab = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setOnClickListener { page = name; render() }
+                setOnClickListener { page = name; detailPackage = null; render() }
             }
             tab.addView(TextView(this).apply {
                 text = icon
@@ -68,64 +69,107 @@ class MainActivity : Activity() {
 
     private fun render() {
         content.removeAllViews()
+        if (detailPackage != null) {
+            appDetail(detailPackage!!)
+            return
+        }
         when (page) {
             "Home" -> homeScreen()
-            "Pending" -> message("No live pending accesses. VPN engine is not integrated.")
-            "Apps" -> {
-                message("App Rules — saved locally (not yet active)")
-                content.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
-                appRules.forEachIndexed { index, rule ->
-                    content.addView(Button(this).apply {
-                        text = "${rule.decision}: ${rule.packageName} • ${rule.network ?: "All networks"}"
-                        isAllCaps = false
-                        setOnClickListener {
-                            AlertDialog.Builder(this@MainActivity).setTitle("Remove app rule?")
-                                .setMessage(text)
-                                .setPositiveButton("Remove") { _, _ ->
-                                    val previous = appRules.toList()
-                                    appRules.removeAt(index)
-                                    if (!appStore.save(appRules)) {
-                                        appRules.clear(); appRules.addAll(previous)
-                                        Toast.makeText(this@MainActivity, "Unable to save", Toast.LENGTH_LONG).show()
-                                    }
-                                    render()
-                                }
-                                .setNegativeButton("Cancel", null).show()
-                        }
-                    })
-                }
-            }
-            "Logs" -> message("No connection logs. Live packet capture is not implemented.")
-            "Global" -> {
-                header("🌐     Global Filters")
-                section("◆   ▥             Pre-Filters")
-                message("IP Filters — saved locally (not yet active)")
-                content.addView(Button(this).apply { text = "+ Add IP rule"; setOnClickListener { addRule() } })
-                rules.filter { it.packageName == null }.forEach { rule ->
-                    content.addView(Button(this).apply {
-                        text = "${if (rule.decision == Decision.ALLOW) "☑" else "☒"}     ${if (rule.decision == Decision.ALLOW) "☑" else "☒"}       ${rule.cidr}             DELETE"
-                        isAllCaps = false
-                        setOnClickListener {
-                            AlertDialog.Builder(this@MainActivity)
-                                .setTitle("Remove this rule?")
-                                .setMessage(text)
-                                .setPositiveButton("Remove") { _, _ ->
-                                    val old = rules.toList()
-                                    rules.remove(rule)
-                                    if (!store.save(rules)) {
-                                        rules.clear(); rules.addAll(old)
-                                        Toast.makeText(this@MainActivity, "Unable to save", Toast.LENGTH_LONG).show()
-                                    }
-                                    render()
-                                }
-                                .setNegativeButton("Cancel", null).show()
-                        }
-                    })
-                }
-                section("◆   ▥             Post-Filters")
-                message("No post-filters configured")
-            }
+            "Pending" -> message("No live pending accesses — VPN engine not connected.")
+            "Apps" -> appsScreen()
+            "Logs" -> message("No connection logs — VPN engine not connected.")
+            "Global" -> globalScreen()
         }
+    }
+
+    private fun appsScreen() {
+        section("◆   ▥                  Applications")
+        val packages = appRules.map { it.packageName }.distinct()
+        if (packages.isEmpty()) message("No application rules yet")
+        for (pkg in packages) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(12, 6, 12, 6)
+            }
+            val wifi = appRules.lastOrNull { it.packageName == pkg && (it.network == NetworkKind.WIFI || it.network == null) }
+            val mobile = appRules.lastOrNull { it.packageName == pkg && (it.network == NetworkKind.MOBILE || it.network == null) }
+            row.addView(TextView(this).apply { text = "▣"; textSize = 28f; setTextColor(Color.rgb(66,165,245)) }, LinearLayout.LayoutParams(48, 70))
+            row.addView(TextView(this).apply { text = marker(wifi?.decision); textSize = 25f }, LinearLayout.LayoutParams(46, 70))
+            row.addView(TextView(this).apply { text = marker(mobile?.decision); textSize = 25f }, LinearLayout.LayoutParams(46, 70))
+            row.addView(TextView(this).apply { text = pkg; textSize = 16f; gravity = Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams(0, 70, 1f))
+            row.addView(TextView(this).apply { text = "›"; textSize = 30f })
+            row.setOnClickListener { detailPackage = pkg; appDetail(pkg); }
+            content.addView(row)
+            content.addView(View(this).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(-1, 1))
+        }
+        content.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
+    }
+
+    private fun marker(decision: Decision?): String = when (decision) {
+        Decision.ALLOW -> "☑"
+        Decision.BLOCK -> "☒"
+        else -> "□"
+    }
+
+    private fun appDetail(pkg: String) {
+        detailPackage = pkg
+        content.removeAllViews()
+        header("‹    App Detail")
+        header("▣    " + pkg)
+        message("◆   Wi-Fi       Custom filters")
+        message("▥   Mobile     Custom filters")
+        section("◆   ▥                  Custom Filters")
+        message("Most specific matching rule wins")
+        for (rule in rules.filter { it.packageName == pkg }) filterRow(rule)
+        content.addView(Button(this).apply { text = "＋ New Custom Filter"; setOnClickListener { addRule(pkg) } })
+        content.addView(Button(this).apply { text = "Edit App Access"; setOnClickListener { addAppRule(pkg) } })
+        content.addView(Button(this).apply {
+            text = "‹ Back to Apps"; setOnClickListener { detailPackage = null; render() }
+        })
+    }
+
+    private fun globalScreen() {
+        header("🌐     Global Filters")
+        section("◆   ▥                  Pre-Filters")
+        for (rule in rules.filter { it.packageName == null }) filterRow(rule)
+        content.addView(Button(this).apply { text = "＋ New Pre-Filter"; setOnClickListener { addRule(null) } })
+        section("◆   ▥                  Post-Filters")
+        message("No post-filters configured")
+    }
+
+    private fun filterRow(rule: IpRule) {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(12, 4, 12, 4)
+        }
+        val color = if (rule.decision == Decision.ALLOW) Color.rgb(76,175,80) else Color.rgb(211,47,47)
+        val wifi = if (rule.network == NetworkKind.MOBILE) "□" else marker(rule.decision)
+        val mobile = if (rule.network == NetworkKind.WIFI) "□" else marker(rule.decision)
+        row.addView(TextView(this).apply { text = wifi; textSize = 23f; setTextColor(color) }, LinearLayout.LayoutParams(48, 62))
+        row.addView(TextView(this).apply { text = mobile; textSize = 23f; setTextColor(color) }, LinearLayout.LayoutParams(48, 62))
+        row.addView(TextView(this).apply {
+            text = rule.cidr; textSize = 16f; gravity = Gravity.CENTER_VERTICAL
+        }, LinearLayout.LayoutParams(0, 62, 1f))
+        row.addView(Button(this).apply {
+            text = "DELETE"
+            setOnClickListener {
+                AlertDialog.Builder(this@MainActivity).setTitle("Delete filter?")
+                    .setMessage(rule.cidr).setNegativeButton("CANCEL", null)
+                    .setPositiveButton("DELETE") { _, _ ->
+                        val old = rules.toList()
+                        rules.remove(rule)
+                        if (!store.save(rules)) {
+                            rules.clear(); rules.addAll(old)
+                            Toast.makeText(this@MainActivity, "Unable to save", Toast.LENGTH_LONG).show()
+                        }
+                        render()
+                    }.show()
+            }
+        })
+        content.addView(row)
+        content.addView(View(this).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(-1, 1))
     }
 
     private fun header(value: String) {
@@ -167,13 +211,13 @@ class MainActivity : Activity() {
         content.addView(box)
     }
 
-    private fun addRule() {
+    private fun addRule(prefillPackage: String? = null) {
         val form = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 8) }
         val cidr = EditText(this).apply {
             hint = "IP or CIDR (e.g. 192.0.2.10 or 2001:db8::/32)"
             inputType = InputType.TYPE_CLASS_TEXT
         }
-        val pkg = EditText(this).apply { hint = "Package name (optional; blank = all apps)" }
+        val pkg = EditText(this).apply { hint = "Package name (optional; blank = all apps)"; setText(prefillPackage ?: "") }
         val network = Spinner(this).apply {
             adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("All networks", "Wi-Fi", "Mobile"))
         }
@@ -208,9 +252,9 @@ class MainActivity : Activity() {
         }
         dialog.show()
     }
-    private fun addAppRule() {
+    private fun addAppRule(prefillPackage: String? = null) {
         val form = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 8) }
-        val pkg = EditText(this).apply { hint = "Package name (e.g. com.android.chrome)" }
+        val pkg = EditText(this).apply { hint = "Package name (e.g. com.android.chrome)"; setText(prefillPackage ?: "") }
         val network = Spinner(this).apply {
             adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("All networks", "Wi-Fi", "Mobile"))
         }
