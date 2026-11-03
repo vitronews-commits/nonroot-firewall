@@ -8,6 +8,7 @@ import android.text.InputType
 import android.view.Gravity
 import android.widget.*
 import android.content.pm.PackageManager
+import android.content.Intent
 import android.graphics.drawable.Drawable
 
 /** Classic minimal shell. Rules are saved locally but NOT enforced until VPN engine integration. */
@@ -112,10 +113,22 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun visibleLaunchablePackages(): List<String> {
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return packageManager.queryIntentActivities(intent, 0)
+            .map { it.activityInfo.packageName }
+            .distinct()
+    }
+
     private fun appsScreen() {
         section("◆   ▥                  Applications")
-        val packages = appRules.map { it.packageName }.distinct()
-        if (packages.isEmpty()) message("No application rules yet")
+        // Include saved targets even if the app was uninstalled.
+        val packages = (visibleLaunchablePackages() +
+            appRules.map { it.packageName } +
+            rules.mapNotNull { it.packageName })
+            .distinct()
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { appInfo(it).first })
+        if (packages.isEmpty()) message("No visible applications found")
         for (pkg in packages) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -125,8 +138,8 @@ class MainActivity : Activity() {
             val wifi = appRules.lastOrNull { it.packageName == pkg && (it.network == NetworkKind.WIFI || it.network == null) }
             val mobile = appRules.lastOrNull { it.packageName == pkg && (it.network == NetworkKind.MOBILE || it.network == null) }
             row.addView(appIcon(pkg), LinearLayout.LayoutParams(dp(48), dp(54)))
-            row.addView(TextView(this).apply { text = marker(wifi?.decision); textSize = 25f }, LinearLayout.LayoutParams(46, 70))
-            row.addView(TextView(this).apply { text = marker(mobile?.decision); textSize = 25f }, LinearLayout.LayoutParams(46, 70))
+            row.addView(TextView(this).apply { text = marker(wifi?.decision); textSize = 25f }, LinearLayout.LayoutParams(dp(46), dp(54)))
+            row.addView(TextView(this).apply { text = marker(mobile?.decision); textSize = 25f }, LinearLayout.LayoutParams(dp(46), dp(54)))
             row.addView(TextView(this).apply { text = appInfo(pkg).first; textSize = 16f; gravity = Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams(0, dp(54), 1f))
             row.addView(TextView(this).apply { text = "›"; textSize = 30f })
             row.setOnClickListener { detailPackage = pkg; render() }
