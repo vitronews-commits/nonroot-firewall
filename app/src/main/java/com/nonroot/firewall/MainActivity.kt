@@ -15,6 +15,8 @@ import android.content.pm.ApplicationInfo
 import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.Executors
+import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.LinearLayoutManager
 
 /** Classic minimal shell. Rules are saved locally but NOT enforced until VPN engine integration. */
 class MainActivity : Activity() {
@@ -37,6 +39,7 @@ class MainActivity : Activity() {
     private var showSystemApps = true
     private var appSearch = ""
     private var pendingSearch: Runnable? = null
+    private var appListAdapter: AppListAdapter? = null
     private var appGeneration = 0
     private data class AppEntry(val pkg: String, val label: String, val system: Boolean)
     private var detailPackage: String? = null
@@ -158,6 +161,7 @@ class MainActivity : Activity() {
 
     private fun render() {
         appListGeneration++
+        appListAdapter = null
         content.removeAllViews()
         toolbar.text = if (detailPackage == null) "☰    NoRoot Firewall" else "‹    App Detail"
         toolbar.setOnClickListener(if (detailPackage != null) android.view.View.OnClickListener {
@@ -262,102 +266,39 @@ class MainActivity : Activity() {
                 updateAppRows()
             }
         })
-        val list = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        val counter = TextView(this).apply { tag = "app-count"; textSize = 12f; setPadding(dp(12),dp(8),dp(12),dp(8)); setTextColor(Color.DKGRAY) }
+        content.addView(counter)
+        val adapter = AppListAdapter(this,
+            { pkg, network -> effectiveAppDecision(pkg, network) },
+            { pkg, network -> cycleAppAccess(pkg, network) },
+            { pkg -> detailPackage = pkg; render() })
+        appListAdapter = adapter
+        val list = RecyclerView(this).apply {
             tag = "app-list"
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            this.adapter = adapter
+            setHasFixedSize(true)
+            isNestedScrollingEnabled = true
         }
-        content.addView(list)
+        // Explicit viewport height ensures RecyclerView recycles rows even inside the legacy ScrollView.
+        content.addView(list, LinearLayout.LayoutParams(-1, dp(480)))
+        content.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
         updateAppRows()
     }
 
     private fun updateAppRows() {
-        val list = content.findViewWithTag<LinearLayout>("app-list") ?: return
-        list.removeAllViews()
+        val adapter = appListAdapter ?: return
         val known = installedApps.associateBy { it.pkg }
         val saved = (appRules.map { it.packageName } + rules.mapNotNull { it.packageName })
-            .filterNot { known.containsKey(it) }
-            .distinct()
+            .filterNot { known.containsKey(it) }.distinct()
             .map { AppEntry(it, it, false) }
-        val all = installedApps + saved
-        val visible = all.filter {
+        val visible = (installedApps + saved).filter {
             (showSystemApps || !it.system) &&
             (appSearch.isBlank() || it.label.contains(appSearch, true) || it.pkg.contains(appSearch, true))
         }
-        list.addView(TextView(this).apply {
-            text = "${visible.size} applications • ${installedApps.count { it.system }} system apps found"
-            textSize = 12f
-            setPadding(dp(12), dp(6), dp(12), dp(8))
-            setTextColor(Color.DKGRAY)
-        })
-        val headings = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.rgb(236, 242, 248))
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), 0, dp(12), 0)
-        }
-        headings.addView(TextView(this).apply { text = "Wi-Fi"; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(dp(48), dp(34)))
-        headings.addView(TextView(this).apply { text = "Mobile"; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(dp(48), dp(34)))
-        headings.addView(TextView(this).apply { text = "Application"; gravity = Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams(0, dp(34), 1f))
-        list.addView(headings)
-        // Incremental rendering avoids creating hundreds of views in a single UI frame.
-        val generation = ++appListGeneration
-        var index = 0
-        fun appendBatch() {
-            if (generation != appListGeneration || page != "Apps" || detailPackage != null) return
-            val limit = minOf(index + 60, visible.size)
-            while (index < limit) {
-                val item = visible[index++]
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(12), dp(4), dp(12), dp(4))
-                }
-                fun control(network: NetworkKind): TextView {
-                    val current = effectiveAppDecision(item.pkg, network)
-                    return TextView(this).apply {
-                        text = marker(current)
-                        textSize = 25f
-                        gravity = Gravity.CENTER
-                        setTextColor(decisionColor(current))
-                        contentDescription = "${network}: ${current ?: Decision.PENDING}. Tap to change"
-                        setOnClickListener {
-                            cycleAppAccess(item.pkg, network)
-                        }
-                    }
-                }
-                row.addView(control(NetworkKind.WIFI), LinearLayout.LayoutParams(dp(48), dp(48)))
-                row.addView(control(NetworkKind.MOBILE), LinearLayout.LayoutParams(dp(48), dp(48)))
-                row.addView(LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    addView(TextView(this@MainActivity).apply {
-                        text = item.label
-                        textSize = 15f
-                        setTextColor(Color.BLACK)
-                        maxLines = 1
-                        ellipsize = android.text.TextUtils.TruncateAt.END
-                    })
-                    addView(TextView(this@MainActivity).apply {
-                        text = item.pkg + if (item.system) " · System" else ""
-                        textSize = 11f
-                        setTextColor(Color.GRAY)
-                        maxLines = 1
-                        ellipsize = android.text.TextUtils.TruncateAt.END
-                    })
-                }, LinearLayout.LayoutParams(0, dp(48), 1f))
-                row.setOnClickListener { detailPackage = item.pkg; render() }
-                list.addView(row)
-                list.addView(View(this).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(-1, dp(1)))
-            }
-            if (index < visible.size) {
-                list.addView(Button(this).apply {
-                    text = "Show more (${visible.size - index} remaining)"
-                    setOnClickListener { list.removeView(this); appendBatch() }
-                })
-            }
-        }
-        appendBatch()
-        content.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
+        content.findViewWithTag<TextView>("app-count")?.text =
+            "${visible.size} applications • ${installedApps.count { it.system }} system apps found"
+        adapter.submit(visible.map { AppListAdapter.Item(it.pkg, it.label, it.system) })
     }
 
     private var appListGeneration = 0
