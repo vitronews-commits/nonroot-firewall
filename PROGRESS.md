@@ -124,3 +124,8 @@
 - [x] Added screen-reader content descriptions for tappable permission indicators.
 - [ ] No successful CI run could be verified: commit-workflow lookup returned no runs (it only exposes pull-request runs); GitHub Actions page was not accessible from this environment.
 - [ ] Real-device screenshot comparison and VPN engine remain pending.
+
+## Codemagic CI
+- [x] Added codemagic.yaml with linux_x2, Java 17, Gradle 8.9 bootstrap, unit tests, debug APK assembly, ZIP integrity check, and downloadable APK/test reports.
+- [ ] Connect GitHub repository in Codemagic and run the first build.
+- [ ] Verify actual Codemagic build result; no success is claimed yet.
