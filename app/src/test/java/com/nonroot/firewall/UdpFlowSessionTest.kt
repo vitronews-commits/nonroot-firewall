@@ -25,6 +25,14 @@ class UdpFlowSessionTest {
         }
     }
 
+    @Test fun sessionExposesClosedState() {
+        val socket = DatagramSocket(null).apply { bind(InetSocketAddress(0)) }
+        val session = UdpFlowSession(request, socket, {})
+        assertFalse(session.isClosed())
+        session.close()
+        assertTrue(session.isClosed())
+    }
+
     @Test fun invalidRemoteAddressRejected() {
         val socket = DatagramSocket(null).apply { bind(InetSocketAddress(0)) }
         try {
