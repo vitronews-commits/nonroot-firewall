@@ -238,3 +238,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] Added local IPv4 UDP responder integration test checking authorized send, received reply and IPv4/UDP checksums (111708f7, 3c906e9f).
 - [ ] CI execution not yet confirmed. This is a test, not evidence of a passing build.
 - [ ] VPN/TUN remains inactive; protected-socket device integration still pending.
+
+## UDP session capacity tests — 2026-11-04
+- [x] Added capacity-limit and socket-cleanup test (2f60bc61).
+- [x] Added same-flow socket reuse test (faedc2cf).
+- [ ] Verify tests in CI; VPN remains inactive.
