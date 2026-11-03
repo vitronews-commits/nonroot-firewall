@@ -100,3 +100,9 @@
 - [x] CI uploads JUnit HTML reports even if build/test job fails.
 - [ ] Verify actual build result and on-device app-list UI; no successful APK is claimed.
 - [ ] VPN engine is still unavailable; app-rule toggles do not block traffic yet.
+
+## Rule evaluation hardening
+- [x] Reject hostname and malformed IPv4 packet destination strings before calling InetAddress in CIDR matching.
+- [x] Added regression tests for hostname and malformed IPv4 with global catch-all allow.
+- [ ] No verified successful GitHub Actions run available through current checks; combined commit statuses returned empty.
+- [ ] Android SDK/Gradle are unavailable in the current local execution environment; no APK build was performed here.
