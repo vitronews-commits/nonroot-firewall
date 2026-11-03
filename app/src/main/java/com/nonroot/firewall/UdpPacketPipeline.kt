@@ -32,8 +32,13 @@ class UdpPacketPipeline(
             ForwardingGate.Action.DROP_UNATTRIBUTED -> Status.UNATTRIBUTED
             ForwardingGate.Action.DROP_UNSUPPORTED -> Status.UNSUPPORTED
             ForwardingGate.Action.DROP_NO_TRANSPORT -> Status.NOT_READY
-            ForwardingGate.Action.FORWARD ->
-                if (relay.submit(datagram, policy)) Status.QUEUED else Status.OVERLOADED
+            ForwardingGate.Action.FORWARD -> {
+                val accepted = sessionManager?.let { manager ->
+                    val key = FlowKey.fromPacket(header, network)
+                    key != null && manager.submit(key, datagram, policy)
+                } ?: relay.submit(datagram, policy)
+                if (accepted) Status.QUEUED else Status.OVERLOADED
+            }
         }
     }
 }
