@@ -1,6 +1,8 @@
 package com.nonroot.firewall
 
 import org.junit.Assert.*
+import java.net.DatagramSocket
+import java.net.InetSocketAddress
 import org.junit.Test
 
 class UdpPacketPipelineTest {
@@ -34,6 +36,23 @@ class UdpPacketPipelineTest {
             val pipeline = UdpPacketPipeline(engine, relay) { false }
             assertEquals(UdpPacketPipeline.Status.NOT_READY,
                 pipeline.accept(packet(), listOf("allowed.app"), NetworkKind.WIFI))
+        }
+    }
+
+    @Test fun persistentManagerStillHonorsTransportGate() {
+        var opened = 0
+        val engine = RuleEngine()
+        engine.appRules.add(AppRule("allowed.app", NetworkKind.WIFI, Decision.ALLOW))
+        UdpRelay({ error("legacy relay must not open") }, {}).use { relay ->
+            UdpSessionManager({
+                opened++
+                DatagramSocket(null).apply { bind(InetSocketAddress(0)) }
+            }, {}).use { manager ->
+                val pipeline = UdpPacketPipeline(engine, relay, manager) { false }
+                assertEquals(UdpPacketPipeline.Status.NOT_READY,
+                    pipeline.accept(packet(), listOf("allowed.app"), NetworkKind.WIFI))
+                assertEquals(0, opened)
+            }
         }
     }
 
