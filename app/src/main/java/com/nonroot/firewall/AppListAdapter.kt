@@ -20,6 +20,10 @@ class AppListAdapter(
     private var items: List<Item> = emptyList()
     init { setHasStableIds(true) }
     override fun getItemId(position: Int): Long = items[position].pkg.hashCode().toLong()
+    fun refreshRule(pkg: String) {
+        val position = items.indexOfFirst { it.pkg == pkg }
+        if (position >= 0) notifyItemChanged(position)
+    }
     fun submit(next: List<Item>) {
         val old = items
         val diff = androidx.recyclerview.widget.DiffUtil.calculateDiff(object : androidx.recyclerview.widget.DiffUtil.Callback() {
@@ -45,8 +49,8 @@ class AppListAdapter(
         }
         val wifi = button()
         val mobile = button()
-        row.addView(wifi, LinearLayout.LayoutParams(dp(46), dp(54)))
-        row.addView(mobile, LinearLayout.LayoutParams(dp(46), dp(54)))
+        row.addView(wifi, LinearLayout.LayoutParams(dp(42), dp(48)))
+        row.addView(mobile, LinearLayout.LayoutParams(dp(42), dp(48)))
         val labels = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
         val title = TextView(context).apply {
             textSize = 15f; setTextColor(Color.BLACK); maxLines = 1
@@ -58,7 +62,7 @@ class AppListAdapter(
         }
         labels.addView(title)
         labels.addView(subtitle)
-        row.addView(labels, LinearLayout.LayoutParams(0, dp(62), 1f))
+        row.addView(labels, LinearLayout.LayoutParams(0, dp(52), 1f))
         return Holder(row, wifi, mobile, title, subtitle)
     }
     override fun getItemCount() = items.size
