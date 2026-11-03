@@ -189,8 +189,28 @@ class MainActivity : Activity() {
         identity.addView(appIcon(pkg), LinearLayout.LayoutParams(dp(64), dp(64)))
         identity.addView(TextView(this).apply { text = appInfo(pkg).first; textSize = 19f; setTextColor(Color.DKGRAY); setPadding(dp(12), 0, 0, 0) })
         content.addView(identity)
-        message("◆   Wi-Fi       Custom filters")
-        message("▥   Mobile     Custom filters")
+        val accessRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+        }
+        fun accessButton(network: NetworkKind, symbol: String): TextView =
+            TextView(this).apply {
+                val current = effectiveAppDecision(pkg, network)
+                text = "$symbol  ${marker(current)}"
+                textSize = 22f
+                gravity = Gravity.CENTER
+                setTextColor(when (current) {
+                    Decision.ALLOW -> Color.rgb(46, 125, 50)
+                    Decision.BLOCK -> Color.rgb(198, 40, 40)
+                    else -> Color.GRAY
+                })
+                setOnClickListener { cycleAppAccess(pkg, network) }
+            }
+        accessRow.addView(accessButton(NetworkKind.WIFI, "◆"), LinearLayout.LayoutParams(0, dp(56), 1f))
+        accessRow.addView(accessButton(NetworkKind.MOBILE, "▥"), LinearLayout.LayoutParams(0, dp(56), 1f))
+        content.addView(accessRow)
+        message("Tap Wi-Fi or Mobile to cycle Pending / Allow / Block")
         section("◆   ▥                  Custom Filters")
         message("The first matching custom rule 'wins'")
         for (rule in rules.filter { it.packageName == pkg }) filterRow(rule)
