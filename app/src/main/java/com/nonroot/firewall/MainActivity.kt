@@ -3,6 +3,8 @@ package com.nonroot.firewall
 import android.app.Activity
 import android.app.AlertDialog
 import android.os.Bundle
+import android.os.Build
+import android.view.WindowInsets
 import android.graphics.Color
 import android.text.InputType
 import android.view.Gravity
@@ -63,6 +65,9 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= 35) window.setDecorFitsSystemWindows(true)
+        window.statusBarColor = Color.rgb(58, 158, 238)
+        window.navigationBarColor = Color.BLACK
         store = RuleStore(this)
         appStore = AppRuleStore(this)
         rules.addAll(store.load())
@@ -106,6 +111,17 @@ class MainActivity : Activity() {
             tabs.addView(tab, LinearLayout.LayoutParams(0, dp(72), 1f))
         }
         root.addView(tabs)
+        root.fitsSystemWindows = true
+        root.setOnApplyWindowInsetsListener { view, insets ->
+            if (Build.VERSION.SDK_INT >= 30) {
+                val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            } else {
+                @Suppress("DEPRECATION")
+                view.setPadding(0, insets.systemWindowInsetTop, 0, insets.systemWindowInsetBottom)
+            }
+            insets
+        }
         setContentView(root)
         val cached = AppCatalog.read(this)
         if (cached.isNotEmpty()) {
