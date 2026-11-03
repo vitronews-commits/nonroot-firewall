@@ -51,3 +51,12 @@
 - [ ] Populate Apps with actual installed-app names/icons (currently shows saved package rules only).
 - [ ] Pending and Logs need real packet engine data; no fake activity should be displayed.
 - [ ] Build/CI verification remains outstanding.
+
+## Custom Filter dialog milestone
+- [x] IPv4 wildcard input normalization (e.g. 172.217.114.* → /24), plus address suggestions.
+- [x] Destination port matching (specific port or any) and backward-compatible local storage.
+- [x] Separate Wi-Fi/Mobile decisions within the editor, saved as per-network rules.
+- [x] Five additional unit tests for wildcard, ports and network-specific policy.
+- [ ] Match the original dialog's exact spacing, dropdown appearance and icons on a physical Android 15 device.
+- [ ] The `*` address currently maps to IPv4 only; IPv6-any requires separate support.
+- [ ] Real VPN enforcement and successful CI build remain unverified.
