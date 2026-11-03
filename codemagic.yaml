@@ -26,9 +26,3 @@ workflows:
       - app/build/outputs/apk/debug/*.apk
       - app/build/reports/tests/testDebugUnitTest/**/*
       - app/build/test-results/testDebugUnitTest/**/*
-    publishing:
-      email:
-        recipients: []
-        notify:
-          success: false
-          failure: false
