@@ -221,6 +221,7 @@ class MainActivity : Activity() {
             appRules.clear(); appRules.addAll(old)
             Toast.makeText(this, "Unable to save app rule", Toast.LENGTH_LONG).show()
         }
+        if (page == "Apps") appsScrollPosition = (screenHost.findViewWithTag<RecyclerView>("app-list")?.layoutManager as? LinearLayoutManager)?.findFirstVisibleItemPosition() ?: 0
         render()
     }
 
@@ -240,6 +241,7 @@ class MainActivity : Activity() {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     appSearch = s?.toString().orEmpty()
+                    appsScrollPosition = 0
                     pendingSearch?.let { mainHandler.removeCallbacks(it) }
                     pendingSearch = Runnable { if (page == "Apps" && detailPackage == null) updateAppRows() }
                     mainHandler.postDelayed(pendingSearch!!, 180)
