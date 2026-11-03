@@ -35,6 +35,33 @@ class UdpSessionManagerTest {
         }
     }
 
+    @Test fun allowedRequestUsesLocalUdpResponder() {
+        DatagramSocket(0, java.net.InetAddress.getLoopbackAddress()).use { server ->
+            server.soTimeout = 2000
+            val latch = java.util.concurrent.CountDownLatch(1)
+            val received = java.util.concurrent.atomic.AtomicReference<ByteArray>()
+            val responder = Thread {
+                try {
+                    val incoming = java.net.DatagramPacket(ByteArray(64), 64)
+                    server.receive(incoming)
+                    server.send(java.net.DatagramPacket(byteArrayOf(7), 1, incoming.address, incoming.port))
+                } catch (_: Exception) { }
+            }
+            responder.start()
+            val req = request().copy(destinationPort = server.localPort)
+            val flow = key().copy(destinationPort = server.localPort)
+            UdpSessionManager({
+                DatagramSocket(null).apply { bind(InetSocketAddress(0)) }
+            }, { bytes -> received.set(bytes); latch.countDown() }).use { manager ->
+                assertTrue(manager.submit(flow, req, PacketPolicy.Result.ALLOW))
+                assertTrue(latch.await(3, java.util.concurrent.TimeUnit.SECONDS))
+                assertTrue(UdpChecksums.verify(received.get()))
+                assertArrayEquals(byteArrayOf(7), UdpDatagram.parseIpv4(received.get())!!.payload)
+            }
+            responder.join(1000)
+        }
+    }
+
     @Test fun invalidPortsCannotOpenSocket() {
         var opened = 0
         UdpSessionManager({
