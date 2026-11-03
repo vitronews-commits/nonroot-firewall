@@ -15,14 +15,14 @@ class RuleEngine(
 ) {
     fun decide(connection: Connection): Decision {
         require(connection.port in 0..65535)
-        // Precedence: app+IP > app+network > app default > global IP > pending.
+        // Precedence: first matching app-specific filter, then app access, then global filters, then pending.
         val specific = ipRules.filter {
             it.packageName == connection.packageName &&
             (it.network == null || it.network == connection.network) &&
             (it.port == null || it.port == connection.port) &&
             matchesCidr(connection.ip, it.cidr)
         }
-        bestIpRule(specific, connection.network)?.let { return it.decision }
+        specific.firstOrNull()?.let { return it.decision }
         appRules.lastOrNull { it.packageName == connection.packageName && it.network == connection.network }
             ?.let { return it.decision }
         appRules.lastOrNull { it.packageName == connection.packageName && it.network == null }
@@ -30,9 +30,10 @@ class RuleEngine(
         val global = ipRules.filter {
             it.packageName == null &&
             (it.network == null || it.network == connection.network) &&
+            (it.port == null || it.port == connection.port) &&
             matchesCidr(connection.ip, it.cidr)
         }
-        bestIpRule(global, connection.network)?.let { return it.decision }
+        global.firstOrNull()?.let { return it.decision }
         return Decision.PENDING // Ask by default: unknown connections must never pass.
     }
 
@@ -55,12 +56,6 @@ class RuleEngine(
             return bits in 0..32
         }
     }
-
-    private fun bestIpRule(rules: List<IpRule>, network: NetworkKind): IpRule? =
-        rules.maxWithOrNull(compareBy<IpRule> { prefix(it.cidr) }
-            .thenBy { if (it.network == network) 1 else 0 })
-
-    private fun prefix(cidr: String): Int = cidr.substringAfter('/', "").toIntOrNull() ?: -1
 
     private fun matchesCidr(address: String, cidr: String): Boolean {
         if (!isValidCidr(cidr)) return false
