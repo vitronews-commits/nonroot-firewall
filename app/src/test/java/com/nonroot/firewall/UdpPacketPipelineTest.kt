@@ -4,20 +4,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class UdpPacketPipelineTest {
-    private fun packet(): ByteArray = ByteArray(29).apply {
-        this[0] = 0x45
-        this[3] = 29
-        this[9] = 17
-        this[12] = 10
-        this[15] = 2
-        this[16] = 1
-        this[19] = 1
-        this[20] = 0x30
-        this[21] = 0x39
-        this[23] = 53
-        this[25] = 9
-        this[28] = 42
-    }
+    private fun packet(): ByteArray = UdpResponsePacket.build(
+        UdpDatagram.Parsed("1.1.1.1", "10.0.0.2", 53, 12345, byteArrayOf(42)),
+        byteArrayOf(42)
+    )!!
 
     @Test fun missingOwnerCannotForward() {
         UdpRelay({ error("socket must not open") }, {}).use { relay ->
