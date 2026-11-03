@@ -21,9 +21,12 @@
 - [x] Bounded, deduplicated PendingQueue policy model with four tests (not connected to live traffic).
 - [x] Apps tab can add/remove local per-package allow/block rules for Wi-Fi/mobile/all networks.
 - [x] App rules persist in SharedPreferences and overwrite previous same package+network decisions.
+- [x] FirewallEngine interface and explicitly unavailable implementation (no false protection status).
+- [x] ConnectionGate records PENDING metadata, clears resolved requests, and enforces ALLOW-only decision semantics.
+- [x] Rule precedence aligned: app+IP > app rule > global IP > pending; regression tests added.
 
 ## Not implemented
-- [ ] Integrate and license-audit NetGuard native forwarding engine.
+- [ ] Integrate and license-audit NetGuard native forwarding engine; no NetGuard code is present yet.
 - [ ] Packet-to-UID attribution, live connection interception, pending approvals and timeouts.
 - [ ] Connect PendingQueue to packet engine; current queue is a pure in-memory model, not a traffic buffer.
 - [ ] Real VPN start/stop and foreground notification.
