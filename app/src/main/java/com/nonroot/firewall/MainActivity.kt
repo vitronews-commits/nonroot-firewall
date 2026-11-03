@@ -11,6 +11,9 @@ import android.widget.*
 /** Classic minimal shell. Rules are saved locally but NOT enforced until VPN engine integration. */
 class MainActivity : Activity() {
     private lateinit var content: LinearLayout
+    private lateinit var toolbar: TextView
+    private val tabIcons = mutableMapOf<String, TextView>()
+    private val tabLabels = mutableMapOf<String, TextView>()
     private lateinit var store: RuleStore
     private lateinit var appStore: AppRuleStore
     private val appRules = mutableListOf<AppRule>()
@@ -25,10 +28,11 @@ class MainActivity : Activity() {
         rules.addAll(store.load())
         appRules.addAll(appStore.load())
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(250,250,250)) }
-        root.addView(TextView(this).apply {
+        toolbar = TextView(this).apply {
             text = "☰    NoRoot Firewall"; textSize = 23f; setTextColor(Color.BLACK)
             setPadding(20, 28, 20, 28); setBackgroundColor(Color.rgb(144,202,249))
-        })
+        }
+        root.addView(toolbar)
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(this).apply { addView(content) }
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -42,18 +46,22 @@ class MainActivity : Activity() {
                 gravity = Gravity.CENTER
                 setOnClickListener { page = name; detailPackage = null; render() }
             }
-            tab.addView(TextView(this).apply {
+            val iconView = TextView(this).apply {
                 text = icon
                 textSize = 27f
                 gravity = Gravity.CENTER
                 setTextColor(if (page == name) Color.WHITE else Color.rgb(185,220,246))
-            })
-            tab.addView(TextView(this).apply {
+            }
+            val labelView = TextView(this).apply {
                 text = name
                 textSize = 13f
                 gravity = Gravity.CENTER
                 setTextColor(Color.WHITE)
-            })
+            }
+            tab.addView(iconView)
+            tab.addView(labelView)
+            tabIcons[name] = iconView
+            tabLabels[name] = labelView
             tabs.addView(tab, LinearLayout.LayoutParams(0, 72, 1f))
         }
         root.addView(tabs)
@@ -69,6 +77,12 @@ class MainActivity : Activity() {
 
     private fun render() {
         content.removeAllViews()
+        toolbar.text = if (detailPackage == null) "☰    NoRoot Firewall" else "‹    App Detail"
+        toolbar.setOnClickListener(if (detailPackage != null) android.view.View.OnClickListener {
+            detailPackage = null; render()
+        } else null)
+        for ((name, view) in tabIcons) view.setTextColor(if (name == page) Color.WHITE else Color.rgb(185,220,246))
+        for ((name, view) in tabLabels) view.setTextColor(if (name == page) Color.WHITE else Color.rgb(185,220,246))
         if (detailPackage != null) {
             appDetail(detailPackage!!)
             return
@@ -99,7 +113,7 @@ class MainActivity : Activity() {
             row.addView(TextView(this).apply { text = marker(mobile?.decision); textSize = 25f }, LinearLayout.LayoutParams(46, 70))
             row.addView(TextView(this).apply { text = pkg; textSize = 16f; gravity = Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams(0, 70, 1f))
             row.addView(TextView(this).apply { text = "›"; textSize = 30f })
-            row.setOnClickListener { detailPackage = pkg; appDetail(pkg); }
+            row.setOnClickListener { detailPackage = pkg; render() }
             content.addView(row)
             content.addView(View(this).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(-1, 1))
         }
@@ -115,7 +129,6 @@ class MainActivity : Activity() {
     private fun appDetail(pkg: String) {
         detailPackage = pkg
         content.removeAllViews()
-        header("‹    App Detail")
         header("▣    " + pkg)
         message("◆   Wi-Fi       Custom filters")
         message("▥   Mobile     Custom filters")
