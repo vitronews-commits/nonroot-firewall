@@ -21,6 +21,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 /** Classic minimal shell. Rules are saved locally but NOT enforced until VPN engine integration. */
 class MainActivity : Activity() {
     private lateinit var content: LinearLayout
+    private lateinit var screenHost: FrameLayout
+    private var appsScrollPosition = 0
     private lateinit var toolbar: TextView
     private val tabIcons = mutableMapOf<String, TextView>()
     private val tabLabels = mutableMapOf<String, TextView>()
@@ -73,8 +75,9 @@ class MainActivity : Activity() {
         }
         root.addView(toolbar)
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val scroll = ScrollView(this).apply { addView(content) }
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        screenHost = FrameLayout(this)
+        screenHost.addView(ScrollView(this).apply { addView(content) })
+        root.addView(screenHost, LinearLayout.LayoutParams(-1, 0, 1f))
         val tabs = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.rgb(66,165,245))
@@ -83,7 +86,7 @@ class MainActivity : Activity() {
             val tab = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setOnClickListener { page = name; detailPackage = null; render() }
+                setOnClickListener { if (page == "Apps") appsScrollPosition = (screenHost.findViewWithTag<RecyclerView>("app-list")?.layoutManager as? LinearLayoutManager)?.findFirstVisibleItemPosition() ?: 0; page = name; detailPackage = null; render() }
             }
             val iconView = TextView(this).apply {
                 text = icon
@@ -162,7 +165,9 @@ class MainActivity : Activity() {
     private fun render() {
         appListGeneration++
         appListAdapter = null
-        content.removeAllViews()
+        screenHost.removeAllViews()
+        content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        screenHost.addView(ScrollView(this).apply { addView(content) })
         toolbar.text = if (detailPackage == null) "☰    NoRoot Firewall" else "‹    App Detail"
         toolbar.setOnClickListener(if (detailPackage != null) android.view.View.OnClickListener {
             detailPackage = null; render()
@@ -280,10 +285,17 @@ class MainActivity : Activity() {
             setHasFixedSize(true)
             isNestedScrollingEnabled = true
         }
-        // Explicit viewport height ensures RecyclerView recycles rows even inside the legacy ScrollView.
-        content.addView(list, LinearLayout.LayoutParams(-1, dp(480)))
-        content.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
+        val appsLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        while (content.childCount > 0) {
+            val child = content.getChildAt(0)
+            content.removeViewAt(0)
+            appsLayout.addView(child)
+        }
+        appsLayout.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
+        screenHost.removeAllViews()
+        screenHost.addView(appsLayout, FrameLayout.LayoutParams(-1, -1))
         updateAppRows()
+        list.post { (list.layoutManager as? LinearLayoutManager)?.scrollToPosition(appsScrollPosition) }
     }
 
     private fun updateAppRows() {
@@ -296,7 +308,7 @@ class MainActivity : Activity() {
             (showSystemApps || !it.system) &&
             (appSearch.isBlank() || it.label.contains(appSearch, true) || it.pkg.contains(appSearch, true))
         }
-        content.findViewWithTag<TextView>("app-count")?.text =
+        screenHost.findViewWithTag<TextView>("app-count")?.text =
             "${visible.size} applications • ${installedApps.count { it.system }} system apps found"
         adapter.submit(visible.map { AppListAdapter.Item(it.pkg, it.label, it.system) })
     }
