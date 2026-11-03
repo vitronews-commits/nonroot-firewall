@@ -221,8 +221,7 @@ class MainActivity : Activity() {
             appRules.clear(); appRules.addAll(old)
             Toast.makeText(this, "Unable to save app rule", Toast.LENGTH_LONG).show()
         }
-        if (page == "Apps") appsScrollPosition = (screenHost.findViewWithTag<RecyclerView>("app-list")?.layoutManager as? LinearLayoutManager)?.findFirstVisibleItemPosition() ?: 0
-        render()
+        if (page == "Apps" && detailPackage == null) appListAdapter?.refreshRule(pkg) else render()
     }
 
     private fun appsScreen() {
