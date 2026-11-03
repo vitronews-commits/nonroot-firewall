@@ -2,7 +2,6 @@ package com.nonroot.firewall
 
 import android.content.Context
 import android.net.ConnectivityManager
-import android.net.VpnService
 import android.os.Build
 import android.os.Process
 import java.net.InetSocketAddress
@@ -30,8 +29,8 @@ class ConnectionOwnerResolver(context: Context) {
             else -> return null
         }
         return try {
-            val local = InetSocketAddress(packet.source, packet.sourcePort)
-            val remote = InetSocketAddress(packet.destination, packet.destinationPort)
+            val local = InetSocketAddress(java.net.InetAddress.getByName(packet.source), packet.sourcePort)
+            val remote = InetSocketAddress(java.net.InetAddress.getByName(packet.destination), packet.destinationPort)
             val uid = connectivity.getConnectionOwnerUid(protocol, local, remote)
             if (uid == Process.INVALID_UID || uid < 0) return null
             val names = packages.getPackagesForUid(uid)?.distinct()?.sorted().orEmpty()
