@@ -243,3 +243,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] Added capacity-limit and socket-cleanup test (2f60bc61).
 - [x] Added same-flow socket reuse test (faedc2cf).
 - [ ] Verify tests in CI; VPN remains inactive.
+
+## UDP concurrency and policy revocation — 2026-11-04
+- [x] Added concurrent same-flow socket allocation regression test (bb418bc1).
+- [x] Added blocked-session reuse test (1b0e1107).
+- [x] Revoke existing UDP session on non-ALLOW policy (6f26eae8).
+- [ ] CI execution and Android device verification pending; VPN inactive.
