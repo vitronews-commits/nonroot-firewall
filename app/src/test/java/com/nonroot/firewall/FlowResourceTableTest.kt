@@ -40,6 +40,18 @@ class FlowResourceTableTest {
         assertNull(table.get(key(1234), 1))
     }
 
+    @Test fun explicitRemovalClosesExactlyOnce() {
+        val table = FlowResourceTable<Resource>(1, 100)
+        val resource = Resource()
+        assertTrue(table.add(key(1234), resource, 0))
+        assertTrue(table.remove(key(1234)))
+        assertFalse(table.remove(key(1234)))
+        assertEquals(1, resource.closes)
+        assertEquals(0, table.size())
+        table.close()
+        assertEquals(1, resource.closes)
+    }
+
     @Test fun backwardsClockExpiresResources() {
         val table = FlowResourceTable<Resource>(1, 100)
         val resource = Resource()
