@@ -164,6 +164,21 @@ class UdpSessionManagerTest {
         }
     }
 
+    @Test fun ruleChangeEventClosesActiveSession() {
+        val sockets = mutableListOf<DatagramSocket>()
+        UdpSessionManager({
+            DatagramSocket(null).apply {
+                bind(InetSocketAddress(0))
+                sockets.add(this)
+            }
+        }, {}, capacity = 1).use { manager ->
+            assertTrue(manager.submit(key(), request(), PacketPolicy.Result.ALLOW))
+            RuleChangeBus.notifySaved()
+            assertEquals(0, manager.activeCount())
+            assertTrue(sockets.all { it.isClosed })
+        }
+    }
+
     @Test fun invalidPortsCannotOpenSocket() {
         var opened = 0
         UdpSessionManager({
