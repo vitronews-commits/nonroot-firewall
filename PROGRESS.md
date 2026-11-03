@@ -177,3 +177,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [ ] Execute CI unit tests and debug APK build for these commits; no successful run verified.
 - [ ] Persistent UDP sessions, TUN reply writer, TCP/IPv6 forwarding and real-device validation remain outstanding.
 - [ ] VPN service remains intentionally inactive.
+
+## CI compilation fix — 2026-11-04
+- [x] Inspected failed GitHub Actions run 41735904929: `:app:compileDebugKotlin` failed at `UdpRelay.kt:30:9` (`Unresolved reference 'Executors'`).
+- [x] Restored `java.util.concurrent.Executors` import in `UdpRelay.kt` (commit `8402e0bd`).
+- [ ] Verify a new GitHub Actions run passes compilation, unit tests and APK assembly. Fix is committed but not yet verified.
