@@ -11,6 +11,10 @@ import android.widget.*
 import android.content.pm.PackageManager
 import android.content.Intent
 import android.graphics.drawable.Drawable
+import android.content.pm.ApplicationInfo
+import android.os.Handler
+import android.os.Looper
+import java.util.concurrent.Executors
 
 /** Classic minimal shell. Rules are saved locally but NOT enforced until VPN engine integration. */
 class MainActivity : Activity() {
@@ -23,6 +27,15 @@ class MainActivity : Activity() {
     private val appRules = mutableListOf<AppRule>()
     private val rules = mutableListOf<IpRule>()
     private var page = "Home"
+    private val appExecutor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var installedApps: List<AppEntry> = emptyList()
+    private var appsLoaded = false
+    private var appsLoading = false
+    private var showSystemApps = true
+    private var appSearch = ""
+    private var appGeneration = 0
+    private data class AppEntry(val pkg: String, val label: String, val system: Boolean)
     private var detailPackage: String? = null
     private fun dp(value: Int) = (value * resources.displayMetrics.density + 0.5f).toInt()
     private fun appInfo(pkg: String): Pair<String, Drawable?> = try {
@@ -87,6 +100,37 @@ class MainActivity : Activity() {
         root.addView(tabs)
         setContentView(root)
         render()
+        loadAppsAsync()
+    }
+
+    override fun onDestroy() {
+        appGeneration++
+        appExecutor.shutdownNow()
+        super.onDestroy()
+    }
+
+    private fun loadAppsAsync() {
+        if (appsLoading) return
+        appsLoading = true
+        val generation = ++appGeneration
+        appExecutor.execute {
+            val pm = packageManager
+            val entries = try {
+                pm.getInstalledApplications(0).map { info ->
+                    AppEntry(info.packageName, pm.getApplicationLabel(info).toString(),
+                        (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                        (info.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0)
+                }
+            } catch (_: Exception) { emptyList() }
+            val sorted = entries.distinctBy { it.pkg }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
+            mainHandler.post {
+                if (generation != appGeneration || isFinishing || isDestroyed) return@post
+                installedApps = sorted
+                appsLoaded = true
+                appsLoading = false
+                if (page == "Apps" && detailPackage == null) render()
+            }
+        }
     }
 
     private fun message(value: String) {
@@ -96,6 +140,7 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        appListGeneration++
         content.removeAllViews()
         toolbar.text = if (detailPackage == null) "☰    NoRoot Firewall" else "‹    App Detail"
         toolbar.setOnClickListener(if (detailPackage != null) android.view.View.OnClickListener {
@@ -154,50 +199,129 @@ class MainActivity : Activity() {
     }
 
     private fun appsScreen() {
-        section("◆   ▥                  Applications")
-        // Include saved targets even if the app was uninstalled.
-        val packages = (visibleLaunchablePackages() +
-            appRules.map { it.packageName } +
-            rules.mapNotNull { it.packageName })
+        section("Applications")
+        if (!appsLoaded) {
+            message("Loading installed applications in background…")
+            if (!appsLoading) loadAppsAsync()
+            return
+        }
+        val search = EditText(this).apply {
+            hint = "Search applications or package name"
+            setSingleLine(true)
+            setText(appSearch)
+            setSelection(text.length)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    appSearch = s?.toString().orEmpty()
+                    updateAppRows()
+                }
+                override fun afterTextChanged(s: android.text.Editable?) {}
+            })
+        }
+        content.addView(search)
+        content.addView(CheckBox(this).apply {
+            text = "Show system applications"
+            isChecked = showSystemApps
+            setOnCheckedChangeListener { _, checked ->
+                showSystemApps = checked
+                updateAppRows()
+            }
+        })
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = "app-list"
+        }
+        content.addView(list)
+        updateAppRows()
+    }
+
+    private fun updateAppRows() {
+        val list = content.findViewWithTag<LinearLayout>("app-list") ?: return
+        list.removeAllViews()
+        val known = installedApps.associateBy { it.pkg }
+        val saved = (appRules.map { it.packageName } + rules.mapNotNull { it.packageName })
+            .filterNot { known.containsKey(it) }
             .distinct()
-            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { appInfo(it).first })
-        if (packages.isEmpty()) message("No visible applications found")
+            .map { AppEntry(it, it, false) }
+        val all = installedApps + saved
+        val visible = all.filter {
+            (showSystemApps || !it.system) &&
+            (appSearch.isBlank() || it.label.contains(appSearch, true) || it.pkg.contains(appSearch, true))
+        }
+        list.addView(TextView(this).apply {
+            text = "${visible.size} applications • ${installedApps.count { it.system }} system apps found"
+            textSize = 12f
+            setPadding(dp(12), dp(6), dp(12), dp(8))
+            setTextColor(Color.DKGRAY)
+        })
         val headings = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(4), dp(12), dp(4))
             setBackgroundColor(Color.rgb(236, 242, 248))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), 0, dp(12), 0)
         }
-        headings.addView(TextView(this), LinearLayout.LayoutParams(dp(48), dp(32)))
-        headings.addView(TextView(this).apply {
-            text = "Wi-Fi"; gravity = Gravity.CENTER; textSize = 12f; setTextColor(Color.DKGRAY)
-        }, LinearLayout.LayoutParams(dp(46), dp(32)))
-        headings.addView(TextView(this).apply {
-            text = "Mobile"; gravity = Gravity.CENTER; textSize = 12f; setTextColor(Color.DKGRAY)
-        }, LinearLayout.LayoutParams(dp(46), dp(32)))
-        headings.addView(TextView(this).apply {
-            text = "Application"; textSize = 13f; gravity = Gravity.CENTER_VERTICAL; setTextColor(Color.DKGRAY)
-        }, LinearLayout.LayoutParams(0, dp(32), 1f))
-        content.addView(headings)
-        for (pkg in packages) {
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(12, 6, 12, 6)
+        headings.addView(TextView(this).apply { text = "Wi-Fi"; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(dp(48), dp(34)))
+        headings.addView(TextView(this).apply { text = "Mobile"; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(dp(48), dp(34)))
+        headings.addView(TextView(this).apply { text = "Application"; gravity = Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams(0, dp(34), 1f))
+        list.addView(headings)
+        // Incremental rendering avoids creating hundreds of views in a single UI frame.
+        val generation = ++appListGeneration
+        var index = 0
+        fun appendBatch() {
+            if (generation != appListGeneration || page != "Apps" || detailPackage != null) return
+            val limit = minOf(index + 20, visible.size)
+            while (index < limit) {
+                val item = visible[index++]
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(12), dp(4), dp(12), dp(4))
+                }
+                fun control(network: NetworkKind): TextView {
+                    val current = effectiveAppDecision(item.pkg, network)
+                    return TextView(this).apply {
+                        text = marker(current)
+                        textSize = 25f
+                        gravity = Gravity.CENTER
+                        setTextColor(decisionColor(current))
+                        contentDescription = "${network}: ${current ?: Decision.PENDING}. Tap to change"
+                        setOnClickListener {
+                            cycleAppAccess(item.pkg, network)
+                        }
+                    }
+                }
+                row.addView(control(NetworkKind.WIFI), LinearLayout.LayoutParams(dp(48), dp(48)))
+                row.addView(control(NetworkKind.MOBILE), LinearLayout.LayoutParams(dp(48), dp(48)))
+                row.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(TextView(this@MainActivity).apply {
+                        text = item.label
+                        textSize = 15f
+                        setTextColor(Color.BLACK)
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                    })
+                    addView(TextView(this@MainActivity).apply {
+                        text = item.pkg + if (item.system) " · System" else ""
+                        textSize = 11f
+                        setTextColor(Color.GRAY)
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                    })
+                }, LinearLayout.LayoutParams(0, dp(48), 1f))
+                row.setOnClickListener { detailPackage = item.pkg; render() }
+                list.addView(row)
+                list.addView(View(this).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(-1, dp(1)))
             }
-            val wifi = effectiveAppDecision(pkg, NetworkKind.WIFI)
-            val mobile = effectiveAppDecision(pkg, NetworkKind.MOBILE)
-            row.addView(appIcon(pkg), LinearLayout.LayoutParams(dp(48), dp(54)))
-            row.addView(TextView(this).apply { text = marker(wifi); textSize = 25f; gravity = Gravity.CENTER; setTextColor(decisionColor(wifi)); contentDescription = "Wi-Fi: ${wifi ?: Decision.PENDING}. Tap to change"; setOnClickListener { cycleAppAccess(pkg, NetworkKind.WIFI) } }, LinearLayout.LayoutParams(dp(46), dp(54)))
-            row.addView(TextView(this).apply { text = marker(mobile); textSize = 25f; gravity = Gravity.CENTER; setTextColor(decisionColor(mobile)); contentDescription = "Mobile: ${mobile ?: Decision.PENDING}. Tap to change"; setOnClickListener { cycleAppAccess(pkg, NetworkKind.MOBILE) } }, LinearLayout.LayoutParams(dp(46), dp(54)))
-            row.addView(TextView(this).apply { text = appInfo(pkg).first; textSize = 16f; gravity = Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams(0, dp(54), 1f))
-            row.addView(TextView(this).apply { text = "›"; textSize = 30f })
-            row.setOnClickListener { detailPackage = pkg; render() }
-            content.addView(row)
-            content.addView(View(this).apply { setBackgroundColor(Color.LTGRAY) }, LinearLayout.LayoutParams(-1, 1))
+            if (index < visible.size) mainHandler.post { appendBatch() }
         }
-        content.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
+        appendBatch()
+        list.addView(Button(this).apply { text = "+ Add app rule"; setOnClickListener { addAppRule() } })
     }
+
+    private var appListGeneration = 0
 
     private fun decisionColor(decision: Decision?): Int = when (decision) {
         Decision.ALLOW -> Color.rgb(46, 125, 50)
