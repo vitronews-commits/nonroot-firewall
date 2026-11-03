@@ -25,6 +25,9 @@ class UdpSessionManager(
     private val closed = AtomicBoolean(false)
     private val executor = Executors.newFixedThreadPool(capacity)
     private val sessions = LinkedHashMap<FlowKey, UdpFlowSession>()
+    private val rulesChangedListener: () -> Unit = { onRulesChanged() }
+
+    init { RuleChangeBus.register(rulesChangedListener) }
 
     /** Only explicitly ALLOWed packets can create or use sessions. */
     @Synchronized
@@ -105,5 +108,6 @@ class UdpSessionManager(
         sessions.values.forEach { it.close() }
         sessions.clear()
         executor.shutdownNow()
+        RuleChangeBus.unregister(rulesChangedListener)
     }
 }
