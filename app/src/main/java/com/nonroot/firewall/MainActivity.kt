@@ -225,7 +225,6 @@ class MainActivity : Activity() {
     }
 
     private fun appsScreen() {
-        section("Applications")
         if (!appsLoaded) {
             message("Loading installed applications in background…")
             if (!appsLoading) loadAppsAsync()
@@ -292,6 +291,23 @@ class MainActivity : Activity() {
             content.removeViewAt(0)
             appsLayout.addView(child)
         }
+        val networkHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.rgb(64, 64, 64))
+            setPadding(dp(10), 0, dp(10), 0)
+        }
+        networkHeader.addView(View(this), LinearLayout.LayoutParams(dp(48), dp(42)))
+        fun networkLabel(symbol: String, label: String) = TextView(this).apply {
+            text = symbol
+            textSize = 23f
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(55, 154, 248))
+            contentDescription = label
+        }
+        networkHeader.addView(networkLabel("◉", "Wi-Fi"), LinearLayout.LayoutParams(dp(42), dp(42)))
+        networkHeader.addView(networkLabel("▂▅▇", "Mobile data"), LinearLayout.LayoutParams(dp(42), dp(42)))
+        appsLayout.addView(networkHeader)
         appsLayout.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
         screenHost.removeAllViews()
         screenHost.addView(appsLayout, FrameLayout.LayoutParams(-1, -1))
