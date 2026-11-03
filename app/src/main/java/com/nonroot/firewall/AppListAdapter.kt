@@ -67,7 +67,6 @@ class AppListAdapter(
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
         labels.addView(title)
-        labels.addView(subtitle)
         row.addView(labels, LinearLayout.LayoutParams(0, dp(52), 1f))
         row.addView(TextView(context).apply { text = "›"; textSize = 30f; gravity = Gravity.CENTER; setTextColor(Color.GRAY) }, LinearLayout.LayoutParams(dp(26), dp(52)))
         return Holder(row, icon, wifi, mobile, title, subtitle)
@@ -77,7 +76,7 @@ class AppListAdapter(
         val item = items[position]
         holder.title.text = item.label
         holder.icon.setImageDrawable(icons.get(item.pkg) ?: try { context.packageManager.getApplicationIcon(item.pkg).also { icons.put(item.pkg, it) } } catch (_: Exception) { context.packageManager.defaultActivityIcon })
-        holder.subtitle.text = item.pkg + if (item.system) " · System" else ""
+        holder.subtitle.text = ""
         fun bind(button: TextView, network: NetworkKind) {
             val value = decision(item.pkg, network)
             button.text = when (value) {
@@ -100,6 +99,7 @@ class AppListAdapter(
         holder.itemView.setBackgroundColor(when {
             w == Decision.BLOCK && m == Decision.BLOCK -> Color.rgb(246, 177, 177)
             w == Decision.ALLOW && m == Decision.ALLOW -> Color.rgb(193, 251, 208)
+            (w == null || w == Decision.PENDING) && (m == null || m == Decision.PENDING) -> Color.WHITE
             else -> Color.rgb(250, 249, 181)
         })
         holder.itemView.setOnClickListener { open(item.pkg) }
