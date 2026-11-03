@@ -78,6 +78,19 @@ class UdpSessionManagerTest {
         assertTrue(sockets.all { it.isClosed })
     }
 
+    @Test fun sameFlowReusesExistingSocket() {
+        var opened = 0
+        UdpSessionManager({
+            opened++
+            DatagramSocket(null).apply { bind(InetSocketAddress(0)) }
+        }, {}, capacity = 1).use { manager ->
+            assertTrue(manager.submit(key(), request(), PacketPolicy.Result.ALLOW))
+            assertTrue(manager.submit(key(), request(), PacketPolicy.Result.ALLOW))
+            assertEquals(1, opened)
+            assertEquals(1, manager.activeCount())
+        }
+    }
+
     @Test fun invalidPortsCannotOpenSocket() {
         var opened = 0
         UdpSessionManager({
