@@ -52,6 +52,14 @@ class FlowResourceTable<T : Closeable>(
         return count
     }
 
+    /** Remove a resource that became unusable before its idle deadline. */
+    @Synchronized
+    fun remove(key: FlowKey): Boolean {
+        val entry = entries.remove(key) ?: return false
+        entry.resource.close()
+        return true
+    }
+
     @Synchronized
     fun size(): Int = entries.size
 
