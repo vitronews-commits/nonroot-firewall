@@ -2,6 +2,9 @@ package com.nonroot.firewall
 
 import android.content.Context
 import android.graphics.Color
+import android.widget.ImageView
+import android.graphics.drawable.Drawable
+import android.util.LruCache
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -18,6 +21,7 @@ class AppListAdapter(
 ) : RecyclerView.Adapter<AppListAdapter.Holder>() {
     data class Item(val pkg: String, val label: String, val system: Boolean)
     private var items: List<Item> = emptyList()
+    private val icons = LruCache<String, Drawable>(96)
     init { setHasStableIds(true) }
     override fun getItemId(position: Int): Long = items[position].pkg.hashCode().toLong()
     fun refreshRule(pkg: String) {
@@ -36,7 +40,7 @@ class AppListAdapter(
         diff.dispatchUpdatesTo(this)
     }
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density + .5f).toInt()
-    class Holder(root: LinearLayout, val wifi: TextView, val mobile: TextView, val title: TextView, val subtitle: TextView) : RecyclerView.ViewHolder(root)
+    class Holder(root: LinearLayout, val icon: ImageView, val wifi: TextView, val mobile: TextView, val title: TextView, val subtitle: TextView) : RecyclerView.ViewHolder(root)
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -47,6 +51,8 @@ class AppListAdapter(
             textSize = 23f
             gravity = Gravity.CENTER
         }
+        val icon = ImageView(context).apply { scaleType = ImageView.ScaleType.FIT_CENTER; setPadding(dp(4),dp(4),dp(4),dp(4)) }
+        row.addView(icon, LinearLayout.LayoutParams(dp(48), dp(48)))
         val wifi = button()
         val mobile = button()
         row.addView(wifi, LinearLayout.LayoutParams(dp(42), dp(48)))
@@ -63,12 +69,14 @@ class AppListAdapter(
         labels.addView(title)
         labels.addView(subtitle)
         row.addView(labels, LinearLayout.LayoutParams(0, dp(52), 1f))
-        return Holder(row, wifi, mobile, title, subtitle)
+        row.addView(TextView(context).apply { text = "›"; textSize = 30f; gravity = Gravity.CENTER; setTextColor(Color.GRAY) }, LinearLayout.LayoutParams(dp(26), dp(52)))
+        return Holder(row, icon, wifi, mobile, title, subtitle)
     }
     override fun getItemCount() = items.size
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = items[position]
         holder.title.text = item.label
+        holder.icon.setImageDrawable(icons.get(item.pkg) ?: try { context.packageManager.getApplicationIcon(item.pkg).also { icons.put(item.pkg, it) } } catch (_: Exception) { context.packageManager.defaultActivityIcon })
         holder.subtitle.text = item.pkg + if (item.system) " · System" else ""
         fun bind(button: TextView, network: NetworkKind) {
             val value = decision(item.pkg, network)
@@ -87,6 +95,13 @@ class AppListAdapter(
         }
         bind(holder.wifi, NetworkKind.WIFI)
         bind(holder.mobile, NetworkKind.MOBILE)
+        val w = decision(item.pkg, NetworkKind.WIFI)
+        val m = decision(item.pkg, NetworkKind.MOBILE)
+        holder.itemView.setBackgroundColor(when {
+            w == Decision.BLOCK && m == Decision.BLOCK -> Color.rgb(246, 177, 177)
+            w == Decision.ALLOW && m == Decision.ALLOW -> Color.rgb(193, 251, 208)
+            else -> Color.rgb(250, 249, 181)
+        })
         holder.itemView.setOnClickListener { open(item.pkg) }
     }
 }
