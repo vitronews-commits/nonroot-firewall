@@ -64,7 +64,9 @@ class UdpFlowSession(
                         request,
                         incoming.data.copyOfRange(incoming.offset, incoming.offset + incoming.length)
                     )
-                    if (reply != null && !closed.get()) onReply(reply)
+                    if (reply != null && !closed.get()) {
+                        try { onReply(reply) } catch (_: Exception) { /* isolate consumer */ }
+                    }
                 } catch (_: SocketTimeoutException) {
                     // Wake periodically for idle expiration.
                 }
