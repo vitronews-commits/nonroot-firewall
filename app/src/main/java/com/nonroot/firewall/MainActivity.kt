@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.text.InputType
 import android.view.Gravity
 import android.widget.*
+import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
 
 /** Classic minimal shell. Rules are saved locally but NOT enforced until VPN engine integration. */
 class MainActivity : Activity() {
@@ -20,6 +22,20 @@ class MainActivity : Activity() {
     private val rules = mutableListOf<IpRule>()
     private var page = "Home"
     private var detailPackage: String? = null
+    private fun dp(value: Int) = (value * resources.displayMetrics.density + 0.5f).toInt()
+    private fun appInfo(pkg: String): Pair<String, Drawable?> = try {
+        val info = packageManager.getApplicationInfo(pkg, 0)
+        packageManager.getApplicationLabel(info).toString() to packageManager.getApplicationIcon(info)
+    } catch (_: PackageManager.NameNotFoundException) {
+        pkg to null
+    }
+    private fun appIcon(pkg: String): android.view.View = ImageView(this).apply {
+        val icon = appInfo(pkg).second
+        if (icon != null) setImageDrawable(icon)
+        else setImageResource(android.R.drawable.sym_def_app_icon)
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        setPadding(dp(5), dp(5), dp(5), dp(5))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,7 +78,7 @@ class MainActivity : Activity() {
             tab.addView(labelView)
             tabIcons[name] = iconView
             tabLabels[name] = labelView
-            tabs.addView(tab, LinearLayout.LayoutParams(0, 72, 1f))
+            tabs.addView(tab, LinearLayout.LayoutParams(0, dp(72), 1f))
         }
         root.addView(tabs)
         setContentView(root)
@@ -108,10 +124,10 @@ class MainActivity : Activity() {
             }
             val wifi = appRules.lastOrNull { it.packageName == pkg && (it.network == NetworkKind.WIFI || it.network == null) }
             val mobile = appRules.lastOrNull { it.packageName == pkg && (it.network == NetworkKind.MOBILE || it.network == null) }
-            row.addView(TextView(this).apply { text = "▣"; textSize = 28f; setTextColor(Color.rgb(66,165,245)) }, LinearLayout.LayoutParams(48, 70))
+            row.addView(appIcon(pkg), LinearLayout.LayoutParams(dp(48), dp(54)))
             row.addView(TextView(this).apply { text = marker(wifi?.decision); textSize = 25f }, LinearLayout.LayoutParams(46, 70))
             row.addView(TextView(this).apply { text = marker(mobile?.decision); textSize = 25f }, LinearLayout.LayoutParams(46, 70))
-            row.addView(TextView(this).apply { text = pkg; textSize = 16f; gravity = Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams(0, 70, 1f))
+            row.addView(TextView(this).apply { text = appInfo(pkg).first; textSize = 16f; gravity = Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams(0, dp(54), 1f))
             row.addView(TextView(this).apply { text = "›"; textSize = 30f })
             row.setOnClickListener { detailPackage = pkg; render() }
             content.addView(row)
@@ -129,7 +145,10 @@ class MainActivity : Activity() {
     private fun appDetail(pkg: String) {
         detailPackage = pkg
         content.removeAllViews()
-        header("▣    " + pkg)
+        val identity = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(16)) }
+        identity.addView(appIcon(pkg), LinearLayout.LayoutParams(dp(64), dp(64)))
+        identity.addView(TextView(this).apply { text = appInfo(pkg).first; textSize = 19f; setTextColor(Color.DKGRAY); setPadding(dp(12), 0, 0, 0) })
+        content.addView(identity)
         message("◆   Wi-Fi       Custom filters")
         message("▥   Mobile     Custom filters")
         section("◆   ▥                  Custom Filters")
