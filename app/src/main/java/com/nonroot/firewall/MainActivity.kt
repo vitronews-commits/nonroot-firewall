@@ -150,7 +150,7 @@ class MainActivity : Activity() {
         row.addView(TextView(this).apply { text = wifi; textSize = 23f; setTextColor(color) }, LinearLayout.LayoutParams(48, 62))
         row.addView(TextView(this).apply { text = mobile; textSize = 23f; setTextColor(color) }, LinearLayout.LayoutParams(48, 62))
         row.addView(TextView(this).apply {
-            text = rule.cidr; textSize = 16f; gravity = Gravity.CENTER_VERTICAL
+            text = rule.cidr + ":" + (rule.port?.toString() ?: "*"); textSize = 16f; gravity = Gravity.CENTER_VERTICAL
         }, LinearLayout.LayoutParams(0, 62, 1f))
         row.addView(Button(this).apply {
             text = "DELETE"
@@ -212,38 +212,86 @@ class MainActivity : Activity() {
     }
 
     private fun addRule(prefillPackage: String? = null) {
-        val form = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 8) }
-        val cidr = EditText(this).apply {
-            hint = "IP or CIDR (e.g. 192.0.2.10 or 2001:db8::/32)"
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 12, 24, 12)
+        }
+        val address = EditText(this).apply {
+            hint = "Address (e.g. 172.217.114.*)"
             inputType = InputType.TYPE_CLASS_TEXT
+            isSingleLine = true
         }
-        val pkg = EditText(this).apply { hint = "Package name (optional; blank = all apps)"; setText(prefillPackage ?: "") }
-        val network = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("All networks", "Wi-Fi", "Mobile"))
+        val addressMenu = Button(this).apply {
+            text = "▼ Address suggestions"
+            setOnClickListener {
+                val choices = AddressPatterns.suggestions(address.text.toString())
+                AlertDialog.Builder(this@MainActivity).setItems(choices.toTypedArray()) { _, index ->
+                    address.setText(choices[index])
+                }.show()
+            }
         }
-        val decision = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("BLOCK", "ALLOW"))
+        val port = EditText(this).apply {
+            hint = "Port (* or 443)"
+            setText("*")
+            inputType = InputType.TYPE_CLASS_TEXT
+            isSingleLine = true
         }
-        form.addView(cidr); form.addView(pkg); form.addView(network); form.addView(decision)
-        val dialog = AlertDialog.Builder(this).setTitle("Add IP rule").setView(form)
-            .setNegativeButton("Cancel", null).setPositiveButton("Save", null).create()
+        val portMenu = Button(this).apply {
+            text = "▼ Port suggestions"
+            setOnClickListener {
+                val choices = arrayOf("443", "80", "*")
+                AlertDialog.Builder(this@MainActivity).setItems(choices) { _, index ->
+                    port.setText(choices[index])
+                }.show()
+            }
+        }
+        val pkg = EditText(this).apply {
+            hint = "Package (blank = global)"
+            setText(prefillPackage ?: "")
+            isEnabled = prefillPackage == null
+        }
+        val wifi = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item, listOf("Wi-Fi: Pending", "Wi-Fi: Allow", "Wi-Fi: Block"))
+        }
+        val mobile = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item, listOf("Mobile: Pending", "Mobile: Allow", "Mobile: Block"))
+        }
+        form.addView(address); form.addView(addressMenu)
+        form.addView(port); form.addView(portMenu)
+        form.addView(pkg)
+        val modes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        modes.addView(wifi, LinearLayout.LayoutParams(0, -2, 1f))
+        modes.addView(mobile, LinearLayout.LayoutParams(0, -2, 1f))
+        form.addView(modes)
+        val dialog = AlertDialog.Builder(this).setTitle("New Custom Filter")
+            .setView(form).setNegativeButton("CANCEL", null)
+            .setPositiveButton("SAVE", null).create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val raw = cidr.text.toString().trim()
-                val normalized = if ('/' in raw) raw else raw + if (':' in raw) "/128" else "/32"
-                if (!RuleEngine.isValidCidr(normalized)) {
-                    cidr.error = "Enter a valid numeric IPv4/IPv6 address or CIDR"; return@setOnClickListener
+                val cidr = AddressPatterns.normalize(address.text.toString())
+                if (cidr == null) { address.error = "Invalid IP, wildcard or CIDR"; return@setOnClickListener }
+                val rawPort = port.text.toString().trim()
+                val parsedPort = if (rawPort == "*") null else rawPort.toIntOrNull()
+                if (rawPort != "*" && (parsedPort == null || parsedPort !in 0..65535)) {
+                    port.error = "Enter 0–65535 or *"; return@setOnClickListener
                 }
-                val kind = when (network.selectedItemPosition) {
-                    1 -> NetworkKind.WIFI
-                    2 -> NetworkKind.MOBILE
-                    else -> null
+                if (wifi.selectedItemPosition == 0 && mobile.selectedItemPosition == 0) {
+                    Toast.makeText(this, "Choose Allow or Block for at least one network", Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
                 }
-                val value = if (decision.selectedItemPosition == 0) Decision.BLOCK else Decision.ALLOW
-                val newRule = IpRule(pkg.text.toString().trim().ifBlank { null }, normalized, kind, value)
-                rules.add(newRule)
+                val name = pkg.text.toString().trim().ifBlank { null }
+                val additions = mutableListOf<IpRule>()
+                fun choice(index: Int): Decision = if (index == 1) Decision.ALLOW else Decision.BLOCK
+                if (wifi.selectedItemPosition != 0)
+                    additions.add(IpRule(name, cidr, NetworkKind.WIFI, choice(wifi.selectedItemPosition), parsedPort))
+                if (mobile.selectedItemPosition != 0)
+                    additions.add(IpRule(name, cidr, NetworkKind.MOBILE, choice(mobile.selectedItemPosition), parsedPort))
+                val old = rules.toList()
+                rules.addAll(additions)
                 if (!store.save(rules)) {
-                    rules.removeAt(rules.lastIndex)
+                    rules.clear(); rules.addAll(old)
                     Toast.makeText(this, "Unable to save rule", Toast.LENGTH_LONG).show()
                     return@setOnClickListener
                 }
