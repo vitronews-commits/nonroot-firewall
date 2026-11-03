@@ -33,6 +33,7 @@ class MainActivity : Activity() {
     private var appsLoaded = false
     private var appsLoading = false
     private var catalogRevision = 0L
+    private var lastCatalogCheck = 0L
     private var showSystemApps = true
     private var appSearch = ""
     private var appGeneration = 0
@@ -107,7 +108,7 @@ class MainActivity : Activity() {
             catalogRevision = AppCatalog.revision(this)
         }
         render()
-        loadAppsAsync()
+        if (!appsLoaded) loadAppsAsync()
     }
 
     override fun onResume() {
@@ -234,6 +235,21 @@ class MainActivity : Activity() {
             })
         }
         content.addView(search)
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        actions.addView(Button(this).apply {
+            text = "Refresh"
+            setOnClickListener {
+                if (!appsLoading) loadAppsAsync()
+                Toast.makeText(this@MainActivity, "Checking installed apps…", Toast.LENGTH_SHORT).show()
+            }
+        })
+        actions.addView(TextView(this).apply {
+            text = if (appsLoading) "Scanning…" else "Cached catalog"
+            textSize = 12f
+            setPadding(dp(12), 0, 0, 0)
+            setTextColor(Color.DKGRAY)
+        })
+        content.addView(actions)
         content.addView(CheckBox(this).apply {
             text = "Show system applications"
             isChecked = showSystemApps
