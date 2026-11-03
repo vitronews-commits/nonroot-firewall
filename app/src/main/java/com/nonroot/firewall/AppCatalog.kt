@@ -33,18 +33,19 @@ object AppCatalog {
         entries.forEach { entry ->
             arr.put(JSONObject().put("pkg", entry.pkg).put("label", entry.label).put("system", entry.system))
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(KEY, arr.toString()).putLong(VERSION, System.currentTimeMillis()).commit()
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val nextRevision = prefs.getLong(VERSION, 0L) + 1L
+        prefs.edit().putString(KEY, arr.toString()).putLong(VERSION, nextRevision).commit()
     }
 
-    fun scan(context: Context): List<Entry> {
+    fun scan(context: Context): List<Entry> = synchronized(lock) {
         val pm = context.packageManager
         val entries = pm.getInstalledApplications(0).map { info ->
             Entry(info.packageName, pm.getApplicationLabel(info).toString(),
                 (info.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0)
         }.distinctBy { it.pkg }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
         save(context, entries)
-        return entries
+        entries
     }
 
     fun updatePackage(context: Context, pkg: String, removed: Boolean) {
