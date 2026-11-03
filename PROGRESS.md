@@ -106,3 +106,8 @@
 - [x] Added regression tests for hostname and malformed IPv4 with global catch-all allow.
 - [ ] No verified successful GitHub Actions run available through current checks; combined commit statuses returned empty.
 - [ ] Android SDK/Gradle are unavailable in the current local execution environment; no APK build was performed here.
+
+## App Detail access controls
+- [x] App Detail Wi-Fi and Mobile indicators are interactive, sharing the same persisted three-state app access controls as Apps.
+- [x] App Detail indicators show current effective app-rule state with allow/block/pending colors.
+- [ ] CI build and Android 15 device verification still pending. Commit combined status endpoint returned no statuses, which does not prove Actions success or failure.
