@@ -1,6 +1,7 @@
 package com.nonroot.firewall
 
 import java.io.Closeable
+import java.net.DatagramSocket
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -50,6 +51,29 @@ class FlowResourceTableTest {
         assertEquals(0, table.size())
         table.close()
         assertEquals(1, resource.closes)
+    }
+
+    @Test fun udpSocketPoolReusesAndExpires() {
+        var created = 0
+        UdpSocketPool({ created++; DatagramSocket(null) }, idleMs = 100).use { pool ->
+            val first = pool.socket(key(1234), 0)!!
+            assertSame(first, pool.socket(key(1234), 50))
+            assertEquals(1, created)
+            assertEquals(0, pool.expire(100))
+            assertEquals(1, pool.expire(150))
+            assertTrue(first.isClosed)
+        }
+    }
+
+    @Test fun udpSocketPoolRejectsNonUdpAndClosedPool() {
+        val pool = UdpSocketPool({ DatagramSocket(null) }, capacity = 1)
+        val tcp = FlowKey(6, "10.0.0.2", 1234, "1.1.1.1", 53, NetworkKind.WIFI)
+        assertNull(pool.socket(tcp, 0))
+        val first = pool.socket(key(1234), 0)!!
+        assertNull(pool.socket(key(1235), 0))
+        pool.close()
+        assertTrue(first.isClosed)
+        assertNull(pool.socket(key(1234), 1))
     }
 
     @Test fun backwardsClockExpiresResources() {
