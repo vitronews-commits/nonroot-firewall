@@ -25,7 +25,9 @@ class RuleEngine(
             if (it.packageName == connection.packageName) 1 else 0
         }.thenBy { prefix(it.cidr) }.thenBy { if (it.network == connection.network) 1 else 0 })
             ?.let { return it.decision }
-        appRules.lastOrNull { it.packageName == connection.packageName && (it.network == null || it.network == connection.network) }
+        appRules.lastOrNull { it.packageName == connection.packageName && it.network == connection.network }
+            ?.let { return it.decision }
+        appRules.lastOrNull { it.packageName == connection.packageName && it.network == null }
             ?.let { return it.decision }
         return Decision.PENDING // Ask by default: unknown connections must never pass.
     }
