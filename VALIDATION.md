@@ -12,8 +12,9 @@ must be distinguished from passing off-tunnel socket tests.
 - Global pre-filters run first (first match), followed by application IP/port
   filters (first match), network-specific app access, generic app access,
   then PENDING. This corrects the previous mismatch with the Pre-Filters UI.
-- Every upstream TCP/UDP socket must pass VpnService.protect() before bind or
-  connect. Production sockets additionally bind to the selected non-VPN Android
+- Every upstream TCP/UDP socket must pass VpnService.protect() before connect
+  or send. A local TCP bind first allocates Android's lazy native descriptor;
+  this does not transmit traffic. Production sockets additionally bind to the selected non-VPN Android
   Network; the policy network classification refers to that same network.
 - Before Builder.establish(), a protected loopback preflight sends synthetic
   IP packets through the actual TCP/UDP forwarder, receives replies and checks

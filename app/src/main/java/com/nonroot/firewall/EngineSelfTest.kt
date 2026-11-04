@@ -34,7 +34,11 @@ object EngineSelfTest {
                 server.soTimeout=3000
                 val h=PacketParser.Header("10.23.0.2","127.0.0.1",6,43002,server.localPort,false)
                 check(engine.accept(TransportPacket.build(h,byteArrayOf(),100,0,TcpProxySession.SYN)))
-                server.accept().use { accepted ->
+                val peer=try { server.accept() } catch(e: Exception) {
+                    val failure=errors.peek()
+                    throw IllegalStateException("TCP preflight accept: " + (failure?.let { it.javaClass.simpleName+": "+it.message } ?: e.message),failure ?: e)
+                }
+                peer.use { accepted ->
                     accepted.soTimeout=3000
                     val syn=TransportPacket.parse(checkNotNull(replies.poll(3,TimeUnit.SECONDS)))!!
                     check(syn.flags==18 && syn.acknowledgement==101L && syn.header==TransportPacket.reverse(h))

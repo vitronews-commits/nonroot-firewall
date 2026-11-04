@@ -51,7 +51,7 @@ class TransportIntegrationTest {
     }
     @Test fun protectionFailureClosesSocketsBeforeBindOrConnect() {
         var tcp: Socket?=null
-        try { SocketProtection.tcp { tcp=it; assertFalse(it.isConnected); false }; fail() } catch(_: IllegalStateException) {}
+        try { SocketProtection.tcp { tcp=it; assertTrue(it.isBound); assertFalse(it.isConnected); false }; fail() } catch(_: IllegalStateException) {}
         assertTrue(tcp!!.isClosed)
         var udp: DatagramSocket?=null
         try { SocketProtection.udp { udp=it; assertFalse(it.isBound); false }; fail() } catch(_: IllegalStateException) {}

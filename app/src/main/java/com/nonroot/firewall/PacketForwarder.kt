@@ -42,7 +42,7 @@ class PacketForwarder(
         val run: ()->Unit
         if(h.protocol==6) {
             if(p.flags and 0x3f!=TcpProxySession.SYN || p.payload.isNotEmpty()) return false
-            val session=TcpProxySession(p,tcpSocket,{ deliver(h,it,epoch) },{ allowed(h,epoch) })
+            val session=TcpProxySession(p,tcpSocket,{ deliver(h,it,epoch) },{ allowed(h,epoch) },onError=onError)
             resource=session; accept={ session.offer(it) }; run={ session.run() }
         } else {
             val session=UdpSession(h,epoch)

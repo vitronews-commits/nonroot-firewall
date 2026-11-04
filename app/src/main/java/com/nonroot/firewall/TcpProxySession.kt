@@ -20,7 +20,8 @@ class TcpProxySession(
     private val reply: (ByteArray)->Unit,
     private val permitted: ()->Boolean,
     private val idleMs: Long=120_000,
-    private val initialSequence: Long=SecureRandom().nextInt().toLong() and MASK
+    private val initialSequence: Long=SecureRandom().nextInt().toLong() and MASK,
+    private val onError: (Exception)->Unit={}
 ): Closeable {
     companion object {
         const val FIN=1; const val SYN=2; const val RST=4; const val PSH=8; const val ACK=16
@@ -86,7 +87,8 @@ class TcpProxySession(
                 } else Thread.sleep(10)
                 if(clientFin && remoteFin && outstanding==null) break
             }
-        } catch(_: Exception) {
+        } catch(e: Exception) {
+            if(!closed.get()) onError(e)
             try { emit(flags=RST or ACK) } catch(_: Exception) { }
         } finally { close() }
     }

@@ -318,3 +318,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - GitHub no-VPN instrumentation passed (three tests; gated VPN test skipped as intended).
 - Explicit VPN acceptance failed BEFORE TUN establishment: protected UDP preflight received no datagram and timed out (run 41746647739). Safety gate prevented activation; this is an unresolved Android integration failure, not a passing VPN result.
 - Added transport error propagation into preflight diagnostics to expose the underlying Android socket failure instead of only the timeout. Investigation continuing.
+
+## Android native socket descriptor correction — 2026-11-04
+- AOSP Android 10 Socket implementation confirms that `Socket()` only sets its implementation; `getFileDescriptor$()` returns the implementation descriptor without allocating it. Calling VpnService.protect() before the native descriptor exists can fail.
+- TCP factory now binds locally to an ephemeral port to allocate the descriptor, then requires protect() success BEFORE connect/send. Local bind transmits no packets. Protection failures still close the socket.
+- Added TCP-specific preflight error reporting; the original generic timeout did not distinguish UDP receive from TCP accept, so the earlier UDP attribution was not established.
+- JVM failure-path test now verifies the TCP socket is locally bound but unconnected at protection time. Android verification of the fix pending.
