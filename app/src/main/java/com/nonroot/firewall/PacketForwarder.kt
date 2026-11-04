@@ -74,6 +74,7 @@ class PacketForwarder(
     }
     @Synchronized fun invalidate() { generation++; flows.values.forEach { it.closeable.close() }; flows.clear() }
     @Synchronized fun activeCount()=flows.size
+    @Synchronized fun activeHeaders(): Set<PacketParser.Header> = flows.keys.toSet()
     @Synchronized override fun close() {
         if(closed.compareAndSet(false,true)) { invalidate(); workers.shutdownNow(); sweeper.shutdownNow() }
     }

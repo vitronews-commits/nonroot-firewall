@@ -153,7 +153,10 @@ class FirewallVpnService : VpnService() {
                 else EngineEvents.pending.resolve(connection)
                 if(decision==Decision.ALLOW) {
                     // Bound the attribution cache as well as the socket table.
-                    if(owners.size>=128 && !owners.containsKey(h)) { engine.invalidate(); owners.clear() }
+                    if(owners.size>=128 && !owners.containsKey(h)) {
+                        // Evict stale metadata without terminating unrelated active transfers.
+                        owners.keys.retainAll(engine.activeHeaders())
+                    }
                     val previous=owners[h]
                     if(previous!=null && previous!=connection) { engine.invalidate(); owners.clear() }
                     owners[h]=connection

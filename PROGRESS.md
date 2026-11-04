@@ -363,3 +363,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Emulator identification is now case-insensitive and also recognizes ranchu/goldfish hardware. Explicit VPN mode fails rather than silently skipping on an unexpected device.
 - Added verify_vpn_results.py: the second-stage CI must contain exactly one executed, passing VpnAcceptanceTest with no skip/failure/error. Missing or skipped tests fail the job.
 - No production engine code changed. Corrected Android 10/15 CI execution pending.
+
+## Long-running owner cache correction — 2026-11-04
+- Source audit found that reaching 128 attribution-cache entries invalidated all active transports. Repeated short-lived connections could therefore interrupt unrelated long-lived transfers.
+- Added an atomic active-flow snapshot and prune only stale owner metadata when the cache fills. Existing active sessions are retained; cache size remains bounded by pruning to the at-most-64 active flow keys.
+- Existing real UDP integration now checks active-flow snapshot before/after invalidation. No test-success claim for this change until CI completes.
