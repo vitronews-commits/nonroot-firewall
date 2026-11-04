@@ -47,6 +47,18 @@ class MainActivity : Activity() {
     private var appGeneration = 0
     private data class AppEntry(val pkg: String, val label: String, val system: Boolean)
     private var detailPackage: String? = null
+    private var statusView: TextView? = null
+    private val statusPoll = object : Runnable {
+        override fun run() {
+            statusView?.let { view ->
+                view.text = statusText()
+                view.setTextColor(if (EngineEvents.status == "RUNNING") Color.rgb(35,120,35) else Color.RED)
+            }
+            mainHandler.postDelayed(this, 1000)
+        }
+    }
+    private fun statusText() = EngineEvents.status + "\nTCP/UDP preflight runs before VPN activation.\nUnknown/shared UID and unsupported packets are blocked."
+
     private fun dp(value: Int) = (value * resources.displayMetrics.density + 0.5f).toInt()
     private fun appInfo(pkg: String): Pair<String, Drawable?> = try {
         val info = packageManager.getApplicationInfo(pkg, 0)
@@ -161,6 +173,8 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        mainHandler.removeCallbacks(statusPoll)
+        mainHandler.post(statusPoll)
         if (!::content.isInitialized) return
         val revision = AppCatalog.revision(this)
         if (revision != catalogRevision && revision != 0L) {
@@ -172,7 +186,13 @@ class MainActivity : Activity() {
         if (!appsLoading && AppCatalog.needsReconciliation(this)) loadAppsAsync()
     }
 
+    override fun onPause() {
+        mainHandler.removeCallbacks(statusPoll)
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        mainHandler.removeCallbacks(statusPoll)
         appGeneration++
         pendingSearch?.let { mainHandler.removeCallbacks(it) }
         appExecutor.shutdownNow()
@@ -207,6 +227,7 @@ class MainActivity : Activity() {
     private fun render() {
         appListGeneration++
         appListAdapter = null
+        statusView = null
         screenHost.removeAllViews()
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         screenHost.addView(ScrollView(this).apply { addView(content) })
@@ -337,6 +358,7 @@ class MainActivity : Activity() {
         networkHeader.addView(networkLabel("▂▅▇", "Mobile data"), LinearLayout.LayoutParams(dp(42), dp(42)))
         appsLayout.addView(networkHeader)
         appsLayout.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
+        statusView = null
         screenHost.removeAllViews()
         screenHost.addView(appsLayout, FrameLayout.LayoutParams(-1, -1))
         updateAppRows()
@@ -542,7 +564,8 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(211,47,47)); setTextColor(Color.WHITE)
         }, LinearLayout.LayoutParams(dp(150), dp(80)).apply { topMargin = dp(60) })
         box.addView(TextView(this).apply {
-            text = EngineEvents.status + "\nTCP/UDP preflight runs before VPN activation.\nUnknown/shared UID and unsupported packets are blocked."
+            text = statusText()
+            statusView = this
             setTextColor(Color.RED); gravity = Gravity.CENTER; setPadding(0, dp(20), 0, 0)
         })
         content.addView(box)

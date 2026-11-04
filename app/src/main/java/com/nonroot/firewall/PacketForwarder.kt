@@ -25,7 +25,7 @@ class PacketForwarder(
     @Volatile private var generation=0L
     private val closed=AtomicBoolean(false)
     private val sweeper=java.util.concurrent.Executors.newSingleThreadScheduledExecutor().apply {
-        scheduleAtFixedRate({ expireIdle() },1,1,TimeUnit.SECONDS)
+        scheduleWithFixedDelay({ expireIdle() },1,1,TimeUnit.SECONDS)
     }
     init { require(capacity in 1..128) }
     @Synchronized fun accept(raw: ByteArray): Boolean {

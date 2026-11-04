@@ -116,7 +116,7 @@ class FirewallVpnService : VpnService() {
             })
             forwarder=engine
             EngineEvents.status="RUNNING"
-            getSystemService(NotificationManager::class.java).notify(1,
+            startForeground(1,
                 Notification.Builder(this,"firewall").setContentTitle("NonRoot Firewall")
                     .setContentText("Active — unknown connections blocked")
                     .setSmallIcon(android.R.drawable.ic_lock_lock).setOngoing(true).build())

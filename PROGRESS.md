@@ -293,3 +293,10 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Corrected Global Pre-Filters precedence: first matching global filter now precedes app filters/app access. This prevents app Allow bypassing a global Block; persisted formats/keys remain unchanged.
 - Updated instrumentation setup to AndroidX runner after catching missing legacy android.test classes at compilation. Emulator installation complete; execution still pending.
 - Added CI jobs for JVM/integration tests, lint, debug/release/test APK builds and actual emulator instrumentation. CI execution for this implementation pending.
+
+## APK/build milestone — 2026-11-04
+- Verified local full build (build6): 109 JVM tests, `lintDebug`, debug APK, unsigned release APK and AndroidTest APK all succeeded. No tests skipped in JVM reports.
+- Fixed foreground notification update to use startForeground (no unchecked notification-post call). Retained package visibility permission with a narrow lint annotation because listing/filtering all installed apps is a core firewall requirement. Switched cleanup scheduling to fixed delay.
+- Added live Home status updates and VALIDATION.md with exact limits and device acceptance steps; rebuilding after the UI change.
+- Published implementation branch `engine/vpn-transport` and draft PR #1 through authenticated GitHub API after plain git push lacked credentials. Main remains at the inspected baseline while validation continues.
+- Software-emulated Android 29 boot in progress. No physical-device or real TUN activation has been performed. Do not interpret assembled APKs as device acceptance evidence.
