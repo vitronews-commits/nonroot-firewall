@@ -20,7 +20,7 @@ jobs:
           python3 - <<'PY' > /tmp/obsolete.txt
           import json, os
           for run in json.load(open("/tmp/runs.json"))["workflow_runs"]:
-              if run["name"] == "Android verification" and run["status"] in ("queued","in_progress") and run["head_sha"] != os.environ["CURRENT_HEAD"] and run["id"] != 41818439830:
+              if run["name"] == "Android verification" and run["status"] in ("queued","in_progress") and run["head_sha"] != os.environ["CURRENT_HEAD"] and run["id"] != 41859966632:
                   print(int(run["id"]))
           PY
           while IFS= read -r run; do
