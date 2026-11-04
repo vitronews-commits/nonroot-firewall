@@ -534,3 +534,5 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Home status distinguishes captured VPN routes from an inactive app; it no longer claims traffic blocking while the VPN is off.
 - Preserve full emulator logcat independently of UTP: API 29 system crashes left no per-test logcat. Crashes remain failures.
 - Downloaded candidate 16d9448 APK matches CI SHA-256 b2e54bae18d506688db6f9b1d523232f1c04363b659a3e543a5835d4eb67328b; development candidate, not daily-use acceptance.
+
+- Lockdown harness initially failed before VPN activation because `pm path` returns nonzero for an absent package. Use exact `pm list packages` membership for the fresh-install guard; no existing data is overwritten. Verification rerun required.

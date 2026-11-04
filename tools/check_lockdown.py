@@ -44,7 +44,7 @@ root_result = adb("root")
 if "cannot run as root" in root_result:
     raise SystemExit("Rootable emulator required to inject process death, test not executed")
 adb("wait-for-device")
-if adb("shell", "pm", "path", FIREWALL):
+if "package:" + FIREWALL in adb("shell", "pm", "list", "packages", FIREWALL).splitlines():
     raise SystemExit("Refusing to overwrite existing firewall installation/data; use a fresh emulator")
 adb("install", "-t", "app/build/outputs/apk/debug/app-debug.apk")  # UTP removes the tested target APK.
 owner = False
