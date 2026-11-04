@@ -23,7 +23,8 @@ class TcpProxySession(
     private val idleMs: Long=120_000,
     private val initialSequence: Long=SecureRandom().nextInt().toLong() and MASK,
     private val onError: (Exception)->Unit={},
-    private val authorizeUpload: ()->Boolean=permitted
+    private val authorizeUpload: ()->Boolean=permitted,
+    private val destination: ()->InetSocketAddress={ InetSocketAddress(initial.header.destination,initial.header.destinationPort!!) }
 ): Closeable {
     companion object {
         const val FIN=1; const val SYN=2; const val RST=4; const val PSH=8; const val ACK=16
@@ -54,6 +55,7 @@ class TcpProxySession(
     private var windowAck=initialSequence
     private var duplicateAcks=0
     private var lastProbe=0L
+    private var operation="initial"
     private var lastDataByte: Byte?=null
     private val reverse=TransportPacket.reverse(initial.header)
     private val receiveMss=if(':' in initial.header.source) 1440 else 1460
@@ -88,7 +90,8 @@ class TcpProxySession(
             val upstream=socketFactory(); socket=upstream
             if(closed.get() || !permitted() || !authorizeUpload()) { upstream.close(); return }
             upstream.tcpNoDelay=true
-            upstream.connect(InetSocketAddress(initial.header.destination,initial.header.destinationPort!!),5000)
+            operation="connect"
+            upstream.connect(destination(),5000)
             val channel=upstream.channel
             val key=if(channel!=null) {
                 val selected=Selector.open(); selector=selected
@@ -104,6 +107,7 @@ class TcpProxySession(
                 if(upload.position()>0) {
                     if(!authorizeUpload()) break
                     val previousFree=upload.remaining()
+                    operation="upload-write"
                     upload.flip()
                     if(channel!=null) channel.write(upload)
                     else { val b=ByteArray(upload.remaining()); upload.get(b); upstream.getOutputStream().write(b) }
@@ -111,13 +115,14 @@ class TcpProxySession(
                     // Reopen a closed/small receive window without waiting for another upload.
                     if(upload.remaining()>previousFree && (previousFree<receiveMss || upload.remaining()-previousFree>=receiveMss)) emit()
                 }
-                if(clientFin && !outputShutdown && upload.position()==0) { upstream.shutdownOutput(); outputShutdown=true }
+                if(clientFin && !outputShutdown && upload.position()==0) { shutdownOutput(upstream); outputShutdown=true }
                 var progressed=false
                 if(established && !remoteFin) {
                     var budget=64
                     while(budget-->0) {
                         val available=(peerWindow-distance(serverAcknowledged,serverNext)).coerceAtMost(65535).toInt()
                         if(remoteFin || available<=0 || sent.size>=128 || !permitted() || closed.get()) break
+                        operation="response-read"
                         val count=if(channel!=null) channel.read(ByteBuffer.wrap(buffer,0,minOf(buffer.size,available)))
                             else if(upstream.getInputStream().available()>0) upstream.getInputStream().read(buffer,0,minOf(buffer.size,available)) else 0
                         if(count<0) { remoteFin=true; state="REMOTE_HALF_CLOSED"; emit(flags=FIN or ACK,tracked=true); break }
@@ -157,9 +162,14 @@ class TcpProxySession(
                 } else incoming.poll(20,TimeUnit.MILLISECONDS)?.let { process(it,upstream) }
             }
         } catch(e: Exception) {
-            if(!closed.get()) onError(e)
+            if(!closed.get()) onError(java.io.IOException("TCP $operation: ${e.message}; clientFin=$clientFin remoteFin=$remoteFin uploadPending=${upload.position()} inFlight=${distance(serverAcknowledged,serverNext)}",e))
             try { emit(flags=RST or ACK) } catch(_: Exception) { }
         } finally { close(); try { selector?.close() } catch(_: Exception) { } }
+    }
+    private fun shutdownOutput(upstream: Socket) {
+        operation="half-close"
+        val channel=upstream.channel
+        if(channel!=null) channel.shutdownOutput() else upstream.shutdownOutput()
     }
     private fun process(p: TransportPacket.Packet,upstream: Socket) {
         if(!permitted() || closed.get()) return
@@ -205,7 +215,7 @@ class TcpProxySession(
         }
         if(p.flags and FIN!=0 && !clientFin) {
             clientFin=true; state="CLIENT_HALF_CLOSED"; clientNext=add(clientNext,1)
-            if(upload.position()==0) { upstream.shutdownOutput(); outputShutdown=true }
+            if(upload.position()==0) { shutdownOutput(upstream); outputShutdown=true }
             emit()
         }
     }

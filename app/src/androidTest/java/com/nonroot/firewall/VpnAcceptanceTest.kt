@@ -43,6 +43,9 @@ class VpnAcceptanceTest {
             val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
             while(EngineEvents.status!="RUNNING" && System.nanoTime()<deadline) Thread.sleep(100)
             assertEquals(EngineEvents.snapshot().take(5).toString(),"RUNNING",EngineEvents.status)
+            repeat(3) { context.startForegroundService(Intent(context,FirewallVpnService::class.java)) }
+            Thread.sleep(250)
+            assertEquals("RUNNING",EngineEvents.status)
             val probePackage="com.nonroot.firewall.probe"
             assertTrue(appStore.save(listOf(AppRule(probePackage,null,Decision.ALLOW))))
             var peakPss=android.os.Debug.getPss()
@@ -105,7 +108,43 @@ class VpnAcceptanceTest {
             assertTrue(unknown.replace("\n"," | "),unknown.contains("status=BLOCKED"))
             assertTrue("Expected exact UDP Pending request: "+EngineEvents.pending.snapshot()+" / "+EngineEvents.snapshot().take(12),
                 EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage && it.connection.ip=="10.0.2.2" && it.connection.port==28081 })
+            // Toggle only emulator networking. Reconnect must rebuild DNS/routes while old TUN blocks.
+            assertTrue(appStore.save(listOf(AppRule(probePackage,null,Decision.ALLOW))))
+            try {
+                shell("svc data enable"); shell("svc wifi disable")
+                var limit=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
+                while(EngineEvents.network==NetworkKind.WIFI && System.nanoTime()<limit) Thread.sleep(100)
+                assertNotEquals("Wi-Fi loss callback not observed",NetworkKind.WIFI,EngineEvents.network)
+                if(EngineEvents.network==NetworkKind.MOBILE) {
+                    while(EngineEvents.status!="RUNNING" && System.nanoTime()<limit) Thread.sleep(100)
+                    val mobile=probe("allow"); assertTrue(mobile.replace("\n"," | "),mobile.contains("status=OK"))
+                    println("TUN_HANDOVER WIFI_TO_MOBILE PASS")
+                } else {
+                    while(EngineEvents.status=="RUNNING" && System.nanoTime()<limit) Thread.sleep(100)
+                    assertTrue("Offline gate not retained",EngineEvents.status.startsWith("WAITING"))
+                    assertTrue(EngineEvents.liveConnections().isEmpty())
+                    println("TUN_HANDOVER WIFI_TO_OFFLINE PASS; WIFI_TO_MOBILE NOT_TESTED (no cellular path)")
+                }
+            } finally { shell("svc wifi enable") }
+            var limit=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(45)
+            while((EngineEvents.network!=NetworkKind.WIFI || EngineEvents.status!="RUNNING") && System.nanoTime()<limit) Thread.sleep(100)
+            assertEquals(NetworkKind.WIFI,EngineEvents.network); assertEquals("RUNNING",EngineEvents.status)
+            val reconnect=probe("allow"); assertTrue(reconnect.replace("\n"," | "),reconnect.contains("status=OK"))
+            println("TUN_RECONNECT WIFI_TCP_UDP_DNS PASS")
+            repeat(2) {
+                context.stopService(Intent(context,FirewallVpnService::class.java))
+                limit=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
+                while(EngineEvents.status!="OFF" && System.nanoTime()<limit) Thread.sleep(50)
+                assertEquals("OFF",EngineEvents.status); assertTrue(EngineEvents.liveConnections().isEmpty())
+                context.startForegroundService(Intent(context,FirewallVpnService::class.java))
+                limit=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
+                while(EngineEvents.status!="RUNNING" && System.nanoTime()<limit) Thread.sleep(100)
+                assertEquals("RUNNING",EngineEvents.status)
+                val restarted=probe("allow"); assertTrue(restarted.replace("\n"," | "),restarted.contains("status=OK"))
+            }
+            println("TUN_REPEATED_START_STOP PASS")
         } finally {
+            shell("svc wifi enable")
             context.stopService(Intent(context,FirewallVpnService::class.java))
             appStore.save(savedApps); ipStore.save(savedIps)
             shell("appops set ${context.packageName} ACTIVATE_VPN default")

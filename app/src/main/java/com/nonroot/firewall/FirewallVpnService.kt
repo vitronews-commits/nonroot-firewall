@@ -22,6 +22,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 class FirewallVpnService : VpnService() {
     companion object { const val STOP="com.nonroot.firewall.STOP" }
     private val stopped=AtomicBoolean(false)
+    private val started=AtomicBoolean(false)
+    @Volatile private var rulesValid=false
+    @Volatile private var routeVersion=0L
+    @Volatile private var installedVersion=-1L
+    @Volatile private var networkDns: List<java.net.InetAddress> = emptyList()
+    @Volatile private var networkInterface: String?=null
     private val trafficLogs=TrafficLogLimiter()
     private val worker=Executors.newSingleThreadExecutor()
     @Volatile private var selectedNetwork: Network?=null
@@ -40,7 +46,7 @@ class FirewallVpnService : VpnService() {
         override fun onAvailable(network: Network) { updateNetwork() }
         override fun onLost(network: Network) { updateNetwork(network) }
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { updateNetwork() }
-        override fun onLinkPropertiesChanged(network: Network, properties: android.net.LinkProperties) { if(network==selectedNetwork) underlyingMtu=properties.mtu.takeIf { it>0 } ?: 1500 }
+        override fun onLinkPropertiesChanged(network: Network, properties: android.net.LinkProperties) { updateNetwork() }
     }
     override fun onCreate() {
         super.onCreate()
@@ -50,7 +56,7 @@ class FirewallVpnService : VpnService() {
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if(intent?.action==STOP) { stopSelf(); return START_NOT_STICKY }
-        if(EngineEvents.status=="RUNNING" || EngineEvents.status=="Verifying protected transports") return START_NOT_STICKY
+        if(!started.compareAndSet(false,true)) return START_NOT_STICKY
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel("firewall","Firewall",NotificationManager.IMPORTANCE_LOW))
         val open=PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE)
@@ -71,6 +77,7 @@ class FirewallVpnService : VpnService() {
     }
     @Synchronized private fun reload() {
         policyReady=false
+        rulesValid=false
         rules=try { RuleEngine(RuleStore(this).load(strict=true),AppRuleStore(this).load(strict=true)) }
         catch(e: Exception) {
             forwarder?.invalidate(); owners.clear()
@@ -78,11 +85,13 @@ class FirewallVpnService : VpnService() {
             EngineEvents.record(null,EngineEvents.status)
             throw e
         }
+        rulesValid=true
         forwarder?.invalidate()
         owners.clear()
         updateNetwork()
         trafficLogs.clear()
-        policyReady=true
+        refreshReady()
+        if(tun!=null) EngineEvents.status=if(policyReady) "RUNNING" else "WAITING — forwarding blocked"
         EngineEvents.pending.snapshot().filter { rules.decide(it.connection)!=Decision.PENDING }
             .forEach { EngineEvents.pending.resolve(it.connection) }
     }
@@ -101,16 +110,25 @@ class FirewallVpnService : VpnService() {
         val next=connectivity.activeNetwork?.takeIf { it in preferred }
             ?: selectedNetwork?.takeIf { it in preferred } ?: preferred.firstOrNull()
         val kind=classify(next)
-        if(next==selectedNetwork && kind==classifiedKind) return
-        val wasReady=policyReady
+        val properties=next?.let { connectivity.getLinkProperties(it) }
+        val dns=properties?.dnsServers.orEmpty().toList()
+        networkInterface=properties?.interfaceName
+        underlyingMtu=properties?.mtu?.takeIf { it>0 } ?: 1500
+        if(next==selectedNetwork && kind==classifiedKind && dns==networkDns) return
         policyReady=false
         forwarder?.invalidate()
         owners.clear()
-        underlyingMtu=next?.let { connectivity.getLinkProperties(it)?.mtu }?.takeIf { it>0 } ?: 1500
+        routeVersion++
+        networkDns=dns
         selectedNetwork=next
         classifiedKind=kind
+        EngineEvents.network=if(next==null) null else kind
         if(tun!=null) setUnderlyingNetworks(next?.let { arrayOf(it) } ?: emptyArray())
-        policyReady=wasReady
+        // The worker installs new DNS/routes while the old TUN remains a closed gate.
+        refreshReady()
+    }
+    private fun refreshReady() {
+        policyReady=!stopped.get() && rulesValid && installedVersion==routeVersion && selectedNetwork!=null && networkDns.isNotEmpty()
     }
     private fun classify(network: Network?): NetworkKind {
         val caps=network?.let { connectivity.getNetworkCapabilities(it) }
@@ -138,28 +156,59 @@ class FirewallVpnService : VpnService() {
         val h=PacketParser.parse(bytes) ?: return null
         return if(h.protocol in listOf(6,17)) TransportPacket.reverse(h) else PathMtu.originatingHeader(bytes)
     }
+    /** Establish replacement before releasing old route ownership: no deliberate fail-open gap. */
+    private fun replaceTunnel(): ParcelFileDescriptor? {
+        val config=synchronized(this) { Triple(routeVersion,selectedNetwork,networkDns.toList()) }
+        if(stopped.get()) return null
+        val builder=Builder().setSession("NonRoot Firewall").setMtu(1500)
+            .addAddress("10.23.0.1",32).addAddress("fd23:23::1",128)
+            .addRoute("0.0.0.0",0).addRoute("::",0)
+            .setUnderlyingNetworks(config.second?.let { arrayOf(it) } ?: emptyArray()).setBlocking(false)
+        // Offline placeholders keep routing captured; the gate stays closed until real network DNS exists.
+        if(config.third.isEmpty()) builder.addDnsServer("10.23.0.53")
+        else config.third.forEach { builder.addDnsServer(it) }
+        val next=builder.establish() ?: error("TUN creation rejected")
+        synchronized(this) {
+            if(stopped.get()) { next.close(); return null }
+            val old=tun
+            tun=next; installedVersion=config.first
+            refreshReady()
+            try { old?.close() } catch(_: Exception) { }
+        }
+        return next
+    }
     private fun startTunnel() {
-        var input: ParcelFileDescriptor.AutoCloseInputStream?=null
-        var output: ParcelFileDescriptor.AutoCloseOutputStream?=null
         try {
             check(prepare(this)==null) { "VPN permission required" }
             EngineSelfTest.verify({ SocketProtection.tcp { protect(it) } },{ SocketProtection.udp { protect(it) } })
             check(!stopped.get())
             EngineEvents.record(null,"Protected TCP/UDP preflight passed before TUN")
             reload()
-            val dns=selectedNetwork?.let { connectivity.getLinkProperties(it)?.dnsServers }.orEmpty()
-            check(dns.isNotEmpty()) { "Underlying network has no DNS servers; restart after network becomes available" }
-            val builder=Builder().setSession("NonRoot Firewall").setMtu(1500)
-                .addAddress("10.23.0.1",32).addAddress("fd23:23::1",128)
-                .addRoute("0.0.0.0",0).addRoute("::",0)
-
-                .setUnderlyingNetworks(selectedNetwork?.let { arrayOf(it) } ?: emptyArray()).setBlocking(false)
-            dns.forEach { builder.addDnsServer(it) }
-            val descriptor=builder.establish() ?: error("TUN creation rejected")
-            synchronized(this) {
-                if(stopped.get()) { descriptor.close(); return }
-                tun=descriptor
+            while(!stopped.get()) {
+                try {
+                    val descriptor=replaceTunnel() ?: break
+                    runTunnel(descriptor)
+                } catch(e: Exception) {
+                    policyReady=false
+                    forwarder?.close(); forwarder=null; owners.clear()
+                    EngineEvents.status="ERROR — ${e.message ?: e.javaClass.simpleName}; traffic blocked"
+                    EngineEvents.record(null,EngineEvents.status)
+                    // Keep any established TUN as a blackhole while retrying; only STOP/revoke releases it.
+                    if(tun==null) throw e
+                    Thread.sleep(1000)
+                }
             }
+        } catch(e: Exception) {
+            if(!stopped.get()) {
+                EngineEvents.status="ERROR — ${e.message ?: e.javaClass.simpleName}"
+                EngineEvents.record(null,EngineEvents.status)
+            }
+        } finally { stopSelf() }
+    }
+    private fun runTunnel(descriptor: ParcelFileDescriptor) {
+        var input: ParcelFileDescriptor.AutoCloseInputStream?=null
+        var output: ParcelFileDescriptor.AutoCloseOutputStream?=null
+        try {
             val out=ParcelFileDescriptor.AutoCloseOutputStream(ParcelFileDescriptor.dup(descriptor.fileDescriptor))
             output=out
             val incoming=ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.dup(descriptor.fileDescriptor))
@@ -182,18 +231,18 @@ class FirewallVpnService : VpnService() {
                 if(trafficLogs.allow(h,if(payloadReply) 3 else 1)) EngineEvents.record(h?.let { owners[it]?.connection },"REPLY ${bytes.size} bytes",h?.protocol)
             },onError={ error ->
                 EngineEvents.record(null,"Transport failure: ${error.javaClass.simpleName}: ${error.message}")
-            },pathMtu={ underlyingMtu },authorizeIo=::allowed)
+            },pathMtu={ underlyingMtu },authorizeIo=::allowed,destination={ NetworkDestination.resolve(it,networkInterface) })
             forwarder=engine
             EngineEvents.liveConnections={ engine.snapshot().mapNotNull { flow ->
                 owners[flow.header]?.connection?.let { c -> EngineEvents.LiveConnection(c,flow.header.protocol,flow.header.sourcePort,flow.status,flow.tunInputBytes,flow.tunOutputBytes) }
             } }
-            EngineEvents.status="RUNNING"
+            EngineEvents.status=if(policyReady) "RUNNING" else "WAITING — underlying network/DNS unavailable; traffic blocked"
             startForeground(1,
                 Notification.Builder(this,"firewall").setContentTitle("NonRoot Firewall")
                     .setContentText("Active — unknown connections blocked")
                     .setSmallIcon(android.R.drawable.ic_lock_lock).setOngoing(true).build())
             val buffer=ByteArray(65535)
-            while(!stopped.get()) {
+            while(!stopped.get() && installedVersion==routeVersion) {
                 if(Os.poll(arrayOf(poll),250)==0) continue
                 if(stopped.get()) break
                 val size=incoming.read(buffer)
@@ -226,15 +275,12 @@ class FirewallVpnService : VpnService() {
                 val forwarded=engine.accept(bytes)
                 if(trafficLogs.allow(h,if(forwarded) 0 else 2)) EngineEvents.record(connection,if(forwarded) "QUEUED" else if(decision==Decision.ALLOW) "DROP transport capacity/state" else decision.name+" / dropped",h.protocol)
             }
-        } catch(e: Exception) {
-            if(!stopped.get()) {
-                EngineEvents.status="ERROR — ${e.message ?: e.javaClass.simpleName}"
-                EngineEvents.record(null,EngineEvents.status)
-            }
         } finally {
+            policyReady=false
+            forwarder?.close(); forwarder=null; owners.clear()
+            EngineEvents.liveConnections={ emptyList() }
             try { input?.close() } catch(_: Exception) { }
             try { output?.close() } catch(_: Exception) { }
-            stopSelf()
         }
     }
     override fun onRevoke() { policyReady=false; stopped.set(true); forwarder?.close(); stopSelf(); super.onRevoke() }
@@ -245,6 +291,7 @@ class FirewallVpnService : VpnService() {
         synchronized(this) { tun?.close(); tun=null }
         owners.clear()
         EngineEvents.liveConnections={ emptyList() }
+        EngineEvents.network=null
         RuleChangeBus.unregister(ruleListener)
         try { connectivity.unregisterNetworkCallback(callback) } catch(_: Exception) { }
         worker.shutdownNow()

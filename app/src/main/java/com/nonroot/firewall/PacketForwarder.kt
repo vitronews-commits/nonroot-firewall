@@ -20,7 +20,8 @@ class PacketForwarder(
     private val capacity: Int=64,
     private val onError: (Exception)->Unit={},
     private val pathMtu: ()->Int={ 1500 },
-    private val authorizeIo: (PacketParser.Header)->Boolean=policy
+    private val authorizeIo: (PacketParser.Header)->Boolean=policy,
+    private val destination: (PacketParser.Header)->InetSocketAddress={ InetSocketAddress(it.destination,it.destinationPort!!) }
 ): Closeable {
     init { require(capacity in 1..128) }
     private data class Entry(val closeable: Closeable, val accept: (TransportPacket.Packet)->Boolean, var lastActivity: Long=System.nanoTime(), val startedAt: Long=System.currentTimeMillis(), var inputBytes: Long=0,var outputBytes: Long=0,val state: ()->String={ "ACTIVE" })
@@ -53,7 +54,7 @@ class PacketForwarder(
         val state: ()->String
         if(h.protocol==6) {
             if(p.flags and 0x3f!=TcpProxySession.SYN || p.payload.isNotEmpty()) return false
-            val session=TcpProxySession(p,tcpSocket,{ deliver(h,it,epoch) },{ valid(h,epoch) },onError=onError,authorizeUpload={ allowed(h,epoch) })
+            val session=TcpProxySession(p,tcpSocket,{ deliver(h,it,epoch) },{ valid(h,epoch) },onError=onError,authorizeUpload={ allowed(h,epoch) },destination={ destination(h) })
             resource=session; accept={ session.offer(it) }; run={ session.run() }; state={ session.state() }
         } else {
             val session=UdpSession(h,epoch)
@@ -107,7 +108,7 @@ class PacketForwarder(
                 val s=udpSocket(); socket=s
                 if(stopped.get() || !allowed(h,epoch)) { s.close(); return }
                 s.bind(InetSocketAddress(0))
-                val remote=InetSocketAddress(h.destination,h.destinationPort!!); s.soTimeout=50
+                val remote=destination(h); s.soTimeout=50
                 val channel=s.channel
                 var key=if(channel!=null) {
                     val selected=java.nio.channels.Selector.open(); selector=selected

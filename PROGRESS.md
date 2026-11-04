@@ -436,3 +436,10 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Added removable test-only DPC to probe APK and an emulator-only process-death test: supported DevicePolicyManager Always-on + lockdown, separate-UID denied UDP during kill/restart, independent host leak sink, recovery and cleanup checks. No admin component added to firewall APK; physical devices are refused.
 - 60-minute soak now records minute heartbeats/PSS/active flow counts and starts with verified screen sleep. This is emulator screen-off evidence only, not physical Doze/battery certification.
 - Removed hash-based RecyclerView stable IDs (distinct package names can have equal Java hashes); DiffUtil retains full package identity.
+
+## DNS/network lifecycle and reproducible tooling milestone — verification pending
+- Network/DNS changes now version the route configuration, invalidate old flows and close policy gate. Worker establishes replacement TUN before releasing the old descriptor; offline placeholders retain captured routes with a closed gate. Internal transport failure retains any established TUN while retrying, rather than deliberately restoring ordinary routing.
+- Per-service START guard no longer depends on global UI status. Added emulator Wi-Fi loss/reconnect, optional actual cellular handover (otherwise explicitly NOT_TESTED), repeated START and two STOP/START roundtrips.
+- Link-local IPv6 upstream addresses acquire the selected physical interface scope; policy still evaluates original numeric addresses. Missing scope fails closed. Three JVM tests added; real link-local/NAT64 remains unverified.
+- API 29 diagnostics show all 1 MiB bytes arrived, then upstream reset at EOF. Explicit host fixture SHUT_WR and channel-native half-close added; reset is not accepted as a successful EOF.
+- Gradle 8.9 wrapper generated with official pinned SHA-256. Release key remains external/private; no signing key created.

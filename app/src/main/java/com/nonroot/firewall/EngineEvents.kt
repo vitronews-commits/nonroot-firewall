@@ -6,6 +6,7 @@ object EngineEvents {
     data class LiveConnection(val connection: Connection,val protocol: Int,val sourcePort: Int?,val status: String,val tunInputBytes: Long,val tunOutputBytes: Long)
     @Volatile var liveConnections: ()->List<LiveConnection> = { emptyList() }
     val pending=PendingQueue()
+    @Volatile var network: NetworkKind?=null
     @Volatile var status="OFF — validation required"
     private val events=ArrayDeque<Event>()
     @Synchronized fun record(connection: Connection?, result: String,protocol: Int?=null) {

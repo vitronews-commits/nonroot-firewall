@@ -7,10 +7,14 @@ def echo(client):
     with client:
         client.settimeout(30)
         try:
+            count = 0
             while data := client.recv(4096):
+                count += len(data)
                 client.sendall(data)
-        except (OSError, TimeoutError):
-            pass
+            # Explicit half-close: exercise FIN semantics through emulator NAT, not only close().
+            client.shutdown(socket.SHUT_WR)
+        except (OSError, TimeoutError) as error:
+            print(f"TCP_FIXTURE_ERROR {type(error).__name__}: {error}", flush=True)
 
 
 def tcp():
