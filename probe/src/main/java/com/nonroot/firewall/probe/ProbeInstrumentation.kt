@@ -117,7 +117,7 @@ class ProbeInstrumentation : Instrumentation() {
      * callback before DNS; otherwise netd rejects the lookup before any TUN packet exists.
      * This never changes firewall rules or bypasses VPN routing.
      */
-    private fun awaitNetworkAccess() {
+    private fun awaitNetworkAccess(requireAccess: Boolean=true): Boolean {
         val cm=targetContext.getSystemService(android.net.ConnectivityManager::class.java)
         val ready=java.util.concurrent.CountDownLatch(1)
         val callback=object: android.net.ConnectivityManager.NetworkCallback() {
@@ -126,7 +126,11 @@ class ProbeInstrumentation : Instrumentation() {
             }
         }
         cm.registerDefaultNetworkCallback(callback)
-        try { check(ready.await(10,java.util.concurrent.TimeUnit.SECONDS)) { "Android kept probe UID network-blocked before DNS" } }
+        try {
+            val admitted=ready.await(if(requireAccess) 10L else 1L,java.util.concurrent.TimeUnit.SECONDS)
+            if(requireAccess) check(admitted) { "Android kept probe UID network-blocked before DNS" }
+            return admitted
+        }
         finally { cm.unregisterNetworkCallback(callback) }
     }
     override fun onStart() {
@@ -147,6 +151,7 @@ class ProbeInstrumentation : Instrumentation() {
                     }
                     "lockdown_off" -> { dpm.setAlwaysOnVpnPackage(admin,null,false); result.putString("status","OK") }
                     "vpn_status" -> {
+                        result.putBoolean("networkAdmitted",awaitNetworkAccess(requireAccess=false))
                         val cm=targetContext.getSystemService(android.net.ConnectivityManager::class.java)
                         result.putString("status",if(cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)==true) "VPN" else "NO_VPN")
                         result.putBoolean("lockdown",dpm.isAlwaysOnVpnLockdownEnabled(admin))
