@@ -26,12 +26,16 @@ jobs:
           "$SDKMANAGER" --version
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"
       - name: Build debug APK
-        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
+        run: gradle :app:testDebugUnitTest :app:assembleAndroidTest :app:assembleDebug :app:assembleRelease --stacktrace
       - name: Verify debug APK exists and is non-empty
         run: |
           test -s app/build/outputs/apk/debug/app-debug.apk
           ls -lh app/build/outputs/apk/debug/app-debug.apk
           unzip -t app/build/outputs/apk/debug/app-debug.apk | tail -n 1
+      - name: Verify release APK exists and is non-empty
+        run: |
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          unzip -t app/build/outputs/apk/release/app-release-unsigned.apk | tail -n 1
       - name: Upload unit test reports
         if: always()
         uses: actions/upload-artifact@v4
