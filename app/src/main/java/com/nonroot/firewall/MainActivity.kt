@@ -508,10 +508,23 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 701) {
-            EngineEvents.record(null, "VPN permission result: $resultCode")
-            if (resultCode == RESULT_OK) startFirewall()
-            else {
-                EngineEvents.status = "ERROR — VPN permission denied or cancelled"
+            EngineEvents.record(null, "VPN permission result code: $resultCode")
+            try {
+                // The system's consent activity can return RESULT_CANCELED without
+                // showing a dialog on some OEM builds. Recheck the actual grant.
+                val stillNeedsConsent = android.net.VpnService.prepare(this) != null
+                EngineEvents.record(null, "VPN permission recheck: " +
+                    if (stillNeedsConsent) "not granted" else "granted")
+                if (!stillNeedsConsent) {
+                    startFirewall()
+                } else {
+                    EngineEvents.status = "ERROR — VPN consent not granted (result $resultCode). " +
+                        "Check for an existing VPN or device restriction."
+                    render()
+                }
+            } catch (e: Exception) {
+                EngineEvents.status = "ERROR — VPN consent recheck: ${e.javaClass.simpleName}: ${e.message}"
+                EngineEvents.record(null, EngineEvents.status)
                 render()
             }
         }
