@@ -48,12 +48,19 @@ class MainActivity : Activity() {
     private data class AppEntry(val pkg: String, val label: String, val system: Boolean)
     private var detailPackage: String? = null
     private var statusView: TextView? = null
+    private var monitorRows: LinearLayout?=null
+    private var monitorSearch=""
+    private var monitorLive=false
+    private var monitorProtocol=0
+    private var monitorResult=0
+    private fun toast(text: String)=Toast.makeText(this,text,Toast.LENGTH_LONG).show()
     private val statusPoll = object : Runnable {
         override fun run() {
             statusView?.let { view ->
                 view.text = statusText()
                 view.setTextColor(if (EngineEvents.status == "RUNNING") Color.rgb(35,120,35) else Color.RED)
             }
+            if(page=="Logs") refreshMonitor()
             mainHandler.postDelayed(this, 1000)
         }
     }
@@ -228,6 +235,7 @@ class MainActivity : Activity() {
         appListGeneration++
         appListAdapter = null
         statusView = null
+        monitorRows = null
         screenHost.removeAllViews()
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         screenHost.addView(ScrollView(this).apply { addView(content) })
@@ -359,6 +367,7 @@ class MainActivity : Activity() {
         appsLayout.addView(networkHeader)
         appsLayout.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
         statusView = null
+        monitorRows = null
         screenHost.removeAllViews()
         screenHost.addView(appsLayout, FrameLayout.LayoutParams(-1, -1))
         updateAppRows()
@@ -500,6 +509,33 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 701 && resultCode == RESULT_OK) startFirewall()
+        if(requestCode !in listOf(702,703) || resultCode!=RESULT_OK) return
+        val uri=data?.data ?: return
+        if(uri.scheme!="content") { toast("Choose a document provider file"); return }
+        val snapshot=RuleBackup.Data(rules.toList(),appRules.toList())
+        appExecutor.execute {
+            try {
+                if(requestCode==702) {
+                    val bytes=RuleBackup.encode(snapshot)
+                    checkNotNull(contentResolver.openOutputStream(uri,"wt")).use { it.write(bytes) }
+                    mainHandler.post { if(!isDestroyed) toast("Rules exported") }
+                } else {
+                    val bytes=checkNotNull(contentResolver.openInputStream(uri)).use { input ->
+                        val out=java.io.ByteArrayOutputStream(); val buffer=ByteArray(4096)
+                        while(true) { val n=input.read(buffer); if(n<0) break; require(out.size()+n<=RuleBackup.MAX_BYTES) { "File exceeds 128 KiB" }; out.write(buffer,0,n) }; out.toByteArray()
+                    }
+                    val imported=RuleBackup.decode(bytes)
+                    mainHandler.post {
+                        if(!isDestroyed && !isFinishing) AlertDialog.Builder(this).setTitle("Replace firewall rules?")
+                            .setMessage("Validated ${imported.apps.size} application rules and ${imported.ips.size} IP rules. This replaces the current rules and closes active connections.")
+                            .setNegativeButton("Cancel",null).setPositiveButton("Replace") { _,_ ->
+                                if(RuleBackup.apply(this,imported)) { rules.clear(); rules.addAll(store.load()); appRules.clear(); appRules.addAll(appStore.load()); render(); toast("Rules imported") }
+                                else toast("Unable to save; rules were not replaced")
+                            }.show()
+                    }
+                }
+            } catch(e: Exception) { mainHandler.post { if(!isDestroyed) toast("Rule file rejected: ${e.message ?: e.javaClass.simpleName}") } }
+        }
     }
 
     private fun pendingScreen() {
@@ -529,14 +565,60 @@ class MainActivity : Activity() {
     }
 
     private fun logsScreen() {
-        content.addView(Button(this).apply { text = "Refresh"; setOnClickListener { render() } })
-        val events = EngineEvents.snapshot()
-        if (events.isEmpty()) message("No connection events recorded in this process.")
-        for (event in events) {
-            val c = event.connection
-            val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(event.time))
-            message("$time · ${event.result}" + if (c != null) "\n${c.packageName} → ${c.ip}:${c.port} · ${c.network}" else "")
+        val modes=Spinner(this).apply {
+            adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,listOf("Logs","Live connections"))
+            setSelection(if(monitorLive) 1 else 0)
+            onItemSelectedListener=object: AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+                override fun onItemSelected(parent: AdapterView<*>?,view: View?,position: Int,id: Long) { monitorLive=position==1; refreshMonitor() }
+            }
         }
+        content.addView(modes)
+        content.addView(EditText(this).apply {
+            hint="Search application, destination, port or status"; setSingleLine(true); setText(monitorSearch)
+            addTextChangedListener(object: android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?,start: Int,count: Int,after: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {}
+                override fun onTextChanged(s: CharSequence?,start: Int,before: Int,count: Int) { monitorSearch=s?.toString().orEmpty(); refreshMonitor() }
+            })
+        })
+        val filters=LinearLayout(this)
+        fun filter(labels: List<String>,selection: Int,onSelected: (Int)->Unit)=Spinner(this).apply {
+            adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,labels); setSelection(selection)
+            onItemSelectedListener=object: AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+                override fun onItemSelected(parent: AdapterView<*>?,view: View?,position: Int,id: Long) { onSelected(position); refreshMonitor() }
+            }
+        }
+        filters.addView(filter(listOf("All protocols","TCP","UDP"),monitorProtocol) { monitorProtocol=it },LinearLayout.LayoutParams(0,-2,1f))
+        filters.addView(filter(listOf("All results","Blocked / Pending","Allowed / Replies","Errors"),monitorResult) { monitorResult=it },LinearLayout.LayoutParams(0,-2,1f))
+        content.addView(filters)
+        monitorRows=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }; content.addView(monitorRows)
+        refreshMonitor()
+    }
+    private fun refreshMonitor() {
+        val rows=monitorRows ?: return
+        val protocol=when(monitorProtocol) { 1->6; 2->17; else->null }
+        val lines=if(monitorLive) EngineEvents.liveConnections().filter { protocol==null || it.protocol==protocol }.map { flow ->
+            val c=flow.connection
+            "${c.packageName} → ${c.ip}:${c.port} · ${if(flow.protocol==6) "TCP" else "UDP"} · ${c.network} · ${flow.status}\nTUN sent ${flow.tunInputBytes} B / received ${flow.tunOutputBytes} B (IP bytes, including retransmissions)"
+        } else EngineEvents.snapshot().filter { event ->
+            (protocol==null || event.protocol==protocol) && when(monitorResult) {
+                1 -> event.result.contains("DROP",true) || event.result.contains("BLOCK",true) || event.result.contains("PENDING",true)
+                2 -> event.result=="QUEUED" || event.result.startsWith("REPLY")
+                3 -> event.result.contains("failure",true) || event.result.contains("ERROR",true)
+                else -> true
+            }
+        }.map { event ->
+            val c=event.connection
+            val time=java.text.SimpleDateFormat("HH:mm:ss",java.util.Locale.getDefault()).format(java.util.Date(event.time))
+            "$time · ${event.result}"+(if(event.protocol==6) " · TCP" else if(event.protocol==17) " · UDP" else "")+
+                if(c!=null) "\n${c.packageName} → ${c.ip}:${c.port} · ${c.network}" else ""
+        }
+        val visible=lines.filter { monitorSearch.isBlank() || it.contains(monitorSearch,true) }.take(100)
+        rows.removeAllViews()
+        if(visible.isEmpty()) rows.addView(TextView(this).apply { text="No matching connections or events"; setPadding(dp(12),dp(12),dp(12),dp(12)) })
+        visible.forEach { line -> rows.addView(TextView(this).apply { text=line; textSize=14f; setTextColor(Color.DKGRAY); setPadding(dp(12),dp(8),dp(12),dp(8)) }) }
     }
 
     private fun homeScreen() {
@@ -557,7 +639,16 @@ class MainActivity : Activity() {
             text = "Click OK when it tries to create VPN connection"
             textSize = 16f; gravity = Gravity.CENTER; setPadding(0, dp(14), 0, dp(10))
         })
-        box.addView(CheckBox(this).apply { text = "Auto start on boot"; isEnabled = false })
+        box.addView(Button(this).apply { text="Always-on VPN / restart after reboot"; setOnClickListener {
+            startActivity(Intent(android.provider.Settings.ACTION_VPN_SETTINGS))
+        } })
+        box.addView(TextView(this).apply { text="In Android VPN settings enable Always-on VPN. Enable Block connections without VPN for protection during process death/reboot."; textSize=13f })
+        box.addView(Button(this).apply { text="Export firewall rules"; setOnClickListener {
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE,"NonRootFirewall-rules.json"),702)
+        } })
+        box.addView(Button(this).apply { text="Import firewall rules"; setOnClickListener {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json"),703)
+        } })
         box.addView(Button(this).apply {
             text = "STOP"; textSize = 28f
             setOnClickListener { stopService(Intent(this@MainActivity, FirewallVpnService::class.java)); render() }

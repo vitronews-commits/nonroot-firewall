@@ -411,3 +411,10 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Protected SocketChannel upstream, selector wakeups, 32 KiB upload buffer, <=64 KiB downstream in flight with <=128 retransmission records, 256-packet bounded input queue. Cumulative ACK removal, retransmission backoff, half-close and zero-window probes added; RST sequence validated. Plain socket path retained for baseline tests only.
 - Rule reload closes explicit policy gate; numeric UID retained and rechecked; package changes invalidate transports. No-network declaration uses empty network array and gate rejects missing underlying path.
 - Added separate-UID 1/10/100 MiB and four concurrent TCP transfers with byte integrity/half-close checks and elapsed/CPU/PSS metrics. Dedicated API 35 60-minute TCP/UDP TUN soak workflow added; not yet executed.
+
+## Monitoring, rules portability and expanded regression milestone — verification pending
+- Local JVM: all 136 tests passed, including original 125, four NIO TCP state/window tests, three seeded fuzz/property tests (25,000 arbitrary packets + 3,000 generated/checksum mutations), and 1/10/100 MiB plus concurrency socket tests. JVM loopback is not Android throughput evidence.
+- Live flow metadata/counters and searchable protocol/result-filtered Logs inside existing fifth tab. Counts explicitly represent TUN IP bytes including retransmissions.
+- Bounded 128 KiB versioned rules backup via Android document picker, whole-file validation and one atomic commit for both original preference keys. Five Android backup tests added; no user data migration. Always-on/lockdown uses Android VPN settings.
+- First expanded API 29 TUN load run exposed connection reset on 1 MiB; remains FAIL pending diagnosis. Added progress/error diagnostics, not a timeout relaxation or test skip. API 35/soak not yet established as passing.
+- DNS servers taken from underlying LinkProperties at establishment rather than hardcoded public resolvers. DNS changes during handover still require explicit compatibility acceptance.

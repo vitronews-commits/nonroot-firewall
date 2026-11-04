@@ -76,7 +76,7 @@ class VpnAcceptanceTest {
             if(InstrumentationRegistry.getArguments().getString("loadAcceptance")=="true") {
                 val cpu=android.os.Process.getElapsedCpuTime(); val memory=android.os.Debug.getPss()
                 val stress=probe("stress")
-                assertTrue(stress.replace("\n"," | "),stress.contains("status=OK"))
+                assertTrue(stress.replace("\n"," | ")+" / events="+EngineEvents.snapshot().take(25),stress.contains("status=OK"))
                 println("TUN_STRESS "+stress.replace("\n"," | ")+" engineCpuMs=${android.os.Process.getElapsedCpuTime()-cpu} enginePssBeforeKiB=$memory enginePssAfterKiB=${android.os.Debug.getPss()}")
             }
             if(InstrumentationRegistry.getArguments().getString("soakAcceptance")=="true") {

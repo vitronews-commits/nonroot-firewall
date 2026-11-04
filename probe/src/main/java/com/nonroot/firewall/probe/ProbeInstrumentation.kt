@@ -14,6 +14,7 @@ class ProbeInstrumentation : Instrumentation() {
     private var mode="allow"
     private var durationSeconds=0
     private var completed=0L
+    @Volatile private var progress=""
     private fun transfer(size: Int) {
         Socket().use { socket ->
             socket.soTimeout=30000; socket.connect(InetSocketAddress("10.0.2.2",28080),5000)
@@ -21,13 +22,13 @@ class ProbeInstrumentation : Instrumentation() {
             val writer=Thread {
                 try {
                     val chunk=ByteArray(16384); var offset=0
-                    while(offset<size) { val count=minOf(chunk.size,size-offset); for(i in 0 until count) chunk[i]=((offset+i)*37).toByte(); socket.getOutputStream().write(chunk,0,count); offset+=count }
+                    while(offset<size) { val count=minOf(chunk.size,size-offset); for(i in 0 until count) chunk[i]=((offset+i)*37).toByte(); socket.getOutputStream().write(chunk,0,count); offset+=count; progress="uploaded=$offset/$size" }
                     socket.shutdownOutput()
                 } catch(t: Throwable) { error.set(t) }
             }.apply { start() }
             try {
                 val chunk=ByteArray(16384); var offset=0
-                while(offset<size) { val count=socket.getInputStream().read(chunk,0,minOf(chunk.size,size-offset)); check(count>0) { "Early EOF $offset/$size" }; for(i in 0 until count) check(chunk[i]==((offset+i)*37).toByte()) { "Corruption at ${offset+i}" }; offset+=count }
+                while(offset<size) { val count=socket.getInputStream().read(chunk,0,minOf(chunk.size,size-offset)); check(count>0) { "Early EOF $offset/$size" }; for(i in 0 until count) check(chunk[i]==((offset+i)*37).toByte()) { "Corruption at ${offset+i}" }; offset+=count; progress="received=$offset/$size" }
                 check(socket.getInputStream().read()==-1) { "Missing half-close EOF" }
                 writer.join(30000); check(!writer.isAlive); error.get()?.let { throw IllegalStateException("Upload failed",it) }
             } finally { socket.close(); writer.join(2000) }
@@ -119,7 +120,7 @@ class ProbeInstrumentation : Instrumentation() {
             }
         } catch(e: Exception) {
             if(mode=="udp_block" && permissionDenied(e)) result.putString("status","BLOCKED")
-            else result.putString("status","ERROR mode=$mode stage=$stage received=$received: ${e.javaClass.simpleName}: ${e.message}")
+            else result.putString("status","ERROR mode=$mode stage=$stage received=$received $progress: ${e.javaClass.simpleName}: ${e.message} at ${e.stackTrace.take(4).joinToString()}")
         }
         finish(Activity.RESULT_OK,result)
     }

@@ -32,6 +32,8 @@ class TcpProxySession(
         private fun distance(from: Long,to: Long)=(to-from) and MASK
     }
     private data class Sent(val sequence: Long,val end: Long,val bytes: ByteArray,var at: Long,var retries: Int=0)
+    @Volatile private var state="CONNECTING"
+    fun state()=state
     private val closed=AtomicBoolean(false)
     private val incoming=ArrayBlockingQueue<TransportPacket.Packet>(256)
     @Volatile private var socket: Socket?=null
@@ -91,6 +93,7 @@ class TcpProxySession(
                 val selected=Selector.open(); selector=selected
                 channel.configureBlocking(false); channel.register(selected,0)
             } else null
+            state="SYN_RECEIVED"
             emit(flags=SYN or ACK,tracked=true)
             val buffer=ByteArray(sendMss)
             while(!closed.get() && permitted()) {
@@ -115,7 +118,7 @@ class TcpProxySession(
                         if(remoteFin || available<=0 || sent.size>=128 || !permitted() || closed.get()) break
                         val count=if(channel!=null) channel.read(ByteBuffer.wrap(buffer,0,minOf(buffer.size,available)))
                             else if(upstream.getInputStream().available()>0) upstream.getInputStream().read(buffer,0,minOf(buffer.size,available)) else 0
-                        if(count<0) { remoteFin=true; emit(flags=FIN or ACK,tracked=true); break }
+                        if(count<0) { remoteFin=true; state="REMOTE_HALF_CLOSED"; emit(flags=FIN or ACK,tracked=true); break }
                         if(count>0) { lastActivity=System.nanoTime(); emit(buffer.copyOf(count),ACK or PSH,true); progressed=true }
                         else break
                     }
@@ -124,7 +127,7 @@ class TcpProxySession(
                         upstream.soTimeout=10
                         try {
                             val count=upstream.getInputStream().read(buffer,0,minOf(buffer.size,peerWindow))
-                            if(count<0) { remoteFin=true; emit(flags=FIN or ACK,tracked=true) }
+                            if(count<0) { remoteFin=true; state="REMOTE_HALF_CLOSED"; emit(flags=FIN or ACK,tracked=true) }
                             else if(count>0) { lastActivity=System.nanoTime(); emit(buffer.copyOf(count),ACK or PSH,true); progressed=true }
                         } catch(_: java.net.SocketTimeoutException) { }
                     }
@@ -189,7 +192,7 @@ class TcpProxySession(
                 val first=sent.first(); if(permitted()) reply(first.bytes); first.at=now()
             }
         }
-        established=true; lastActivity=System.nanoTime()
+        established=true; if(!clientFin && !remoteFin) state="ESTABLISHED"; lastActivity=System.nanoTime()
         if(p.sequence!=clientNext) { emit(); return }
         if(p.payload.isNotEmpty()) {
             if(clientFin || p.payload.size>upload.remaining()) { emit(); return }
@@ -199,13 +202,14 @@ class TcpProxySession(
             emit()
         }
         if(p.flags and FIN!=0 && !clientFin) {
-            clientFin=true; clientNext=add(clientNext,1)
+            clientFin=true; state="CLIENT_HALF_CLOSED"; clientNext=add(clientNext,1)
             if(upload.position()==0) { upstream.shutdownOutput(); outputShutdown=true }
             emit()
         }
     }
     override fun close() {
         if(closed.compareAndSet(false,true)) {
+            state="CLOSED"
             selector?.wakeup()
             try { socket?.close() } finally { try { selector?.close() } finally { incoming.clear() } }
         }

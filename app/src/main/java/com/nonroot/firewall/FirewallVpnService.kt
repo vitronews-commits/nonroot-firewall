@@ -24,7 +24,7 @@ class FirewallVpnService : VpnService() {
     private val stopped=AtomicBoolean(false)
     private val worker=Executors.newSingleThreadExecutor()
     @Volatile private var selectedNetwork: Network?=null
-    private var classifiedKind=NetworkKind.OTHER
+    @Volatile private var classifiedKind=NetworkKind.OTHER
     private var tun: ParcelFileDescriptor?=null
     @Volatile private var forwarder: PacketForwarder?=null
     @Volatile private var rules=RuleEngine()
@@ -35,7 +35,8 @@ class FirewallVpnService : VpnService() {
     private val resolver by lazy { ConnectionOwnerResolver(this) }
     private val ruleListener: ()->Unit={ reload() }
     private val callback=object: ConnectivityManager.NetworkCallback() {
-        override fun onLost(network: Network) { updateNetwork() }
+        override fun onAvailable(network: Network) { updateNetwork() }
+        override fun onLost(network: Network) { updateNetwork(network) }
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { updateNetwork() }
     }
     override fun onCreate() {
@@ -76,8 +77,9 @@ class FirewallVpnService : VpnService() {
             .forEach { EngineEvents.pending.resolve(it.connection) }
     }
     /** Signal-strength/capability refreshes must not terminate unchanged paths. */
-    @Synchronized private fun updateNetwork() {
+    @Synchronized private fun updateNetwork(excluded: Network?=null) {
         val candidates=connectivity.allNetworks.filter { n ->
+            if(n==excluded) return@filter false
             val c=connectivity.getNetworkCapabilities(n)
             c?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)==true &&
                 c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -90,11 +92,14 @@ class FirewallVpnService : VpnService() {
             ?: selectedNetwork?.takeIf { it in preferred } ?: preferred.firstOrNull()
         val kind=classify(next)
         if(next==selectedNetwork && kind==classifiedKind) return
+        val wasReady=policyReady
+        policyReady=false
         forwarder?.invalidate()
         owners.clear()
         selectedNetwork=next
         classifiedKind=kind
         if(tun!=null) setUnderlyingNetworks(next?.let { arrayOf(it) } ?: emptyArray())
+        policyReady=wasReady
     }
     private fun classify(network: Network?): NetworkKind {
         val caps=network?.let { connectivity.getNetworkCapabilities(it) }
@@ -104,7 +109,7 @@ class FirewallVpnService : VpnService() {
             else -> NetworkKind.OTHER
         }
     }
-    private fun network()=classify(selectedNetwork)
+    private fun network()=classifiedKind
     private fun allowed(h: PacketParser.Header): Boolean {
         if(!policyReady || stopped.get() || selectedNetwork==null) return false
         val owner=owners[h] ?: return false
@@ -122,11 +127,15 @@ class FirewallVpnService : VpnService() {
             check(!stopped.get())
             EngineEvents.record(null,"Protected TCP/UDP preflight passed before TUN")
             reload()
-            val descriptor=Builder().setSession("NonRoot Firewall").setMtu(1500)
+            val dns=selectedNetwork?.let { connectivity.getLinkProperties(it)?.dnsServers }.orEmpty()
+            check(dns.isNotEmpty()) { "Underlying network has no DNS servers; restart after network becomes available" }
+            val builder=Builder().setSession("NonRoot Firewall").setMtu(1500)
                 .addAddress("10.23.0.1",32).addAddress("fd23:23::1",128)
                 .addRoute("0.0.0.0",0).addRoute("::",0)
-                .addDnsServer("1.1.1.1").addDnsServer("2606:4700:4700::1111")
-                .setUnderlyingNetworks(selectedNetwork?.let { arrayOf(it) } ?: emptyArray()).setBlocking(false).establish() ?: error("TUN creation rejected")
+
+                .setUnderlyingNetworks(selectedNetwork?.let { arrayOf(it) } ?: emptyArray()).setBlocking(false)
+            dns.forEach { builder.addDnsServer(it) }
+            val descriptor=builder.establish() ?: error("TUN creation rejected")
             synchronized(this) {
                 if(stopped.get()) { descriptor.close(); return }
                 tun=descriptor
@@ -142,13 +151,16 @@ class FirewallVpnService : VpnService() {
                     if(!stopped.get()) {
                         out.write(bytes)
                         val h=PacketParser.parse(bytes)?.let { TransportPacket.reverse(it) }
-                        EngineEvents.record(h?.let { owners[it]?.connection },"REPLY ${bytes.size} bytes")
+                        EngineEvents.record(h?.let { owners[it]?.connection },"REPLY ${bytes.size} bytes",h?.protocol)
                     }
                 }
             },onError={ error ->
                 EngineEvents.record(null,"Transport failure: ${error.javaClass.simpleName}: ${error.message}")
             })
             forwarder=engine
+            EngineEvents.liveConnections={ engine.snapshot().mapNotNull { flow ->
+                owners[flow.header]?.connection?.let { c -> EngineEvents.LiveConnection(c,flow.header.protocol,flow.header.sourcePort,flow.status,flow.tunInputBytes,flow.tunOutputBytes) }
+            } }
             EngineEvents.status="RUNNING"
             startForeground(1,
                 Notification.Builder(this,"firewall").setContentTitle("NonRoot Firewall")
@@ -186,7 +198,7 @@ class FirewallVpnService : VpnService() {
                     owners[h]=Attribution(owner!!.uid,connection)
                 } else owners.remove(h)
                 val forwarded=engine.accept(bytes)
-                EngineEvents.record(connection,if(forwarded) "QUEUED" else if(decision==Decision.ALLOW) "DROP transport capacity/state" else decision.name+" / dropped")
+                EngineEvents.record(connection,if(forwarded) "QUEUED" else if(decision==Decision.ALLOW) "DROP transport capacity/state" else decision.name+" / dropped",h.protocol)
             }
         } catch(e: Exception) {
             if(!stopped.get()) {
@@ -206,6 +218,7 @@ class FirewallVpnService : VpnService() {
         forwarder?.close(); forwarder=null
         synchronized(this) { tun?.close(); tun=null }
         owners.clear()
+        EngineEvents.liveConnections={ emptyList() }
         RuleChangeBus.unregister(ruleListener)
         try { connectivity.unregisterNetworkCallback(callback) } catch(_: Exception) { }
         worker.shutdownNow()

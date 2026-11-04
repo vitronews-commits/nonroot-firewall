@@ -20,7 +20,7 @@ class PacketForwarder(
     private val capacity: Int=64,
     private val onError: (Exception)->Unit={}
 ): Closeable {
-    private data class Entry(val closeable: Closeable, val accept: (TransportPacket.Packet)->Boolean, var lastActivity: Long=System.nanoTime())
+    private data class Entry(val closeable: Closeable, val accept: (TransportPacket.Packet)->Boolean, var lastActivity: Long=System.nanoTime(), val startedAt: Long=System.currentTimeMillis(), var inputBytes: Long=0,var outputBytes: Long=0,val state: ()->String={ "ACTIVE" })
     private val flows=HashMap<PacketParser.Header,Entry>()
     private val workers=ThreadPoolExecutor(0,capacity,30,TimeUnit.SECONDS,SynchronousQueue())
     @Volatile private var generation=0L
@@ -34,22 +34,27 @@ class PacketForwarder(
         val p=TransportPacket.parse(raw) ?: return false
         val h=p.header
         if(!policy(h)) { flows.remove(h)?.closeable?.close(); return false }
-        flows[h]?.let { it.lastActivity=System.nanoTime(); return it.accept(p) }
+        flows[h]?.let {
+            val accepted=it.accept(p)
+            if(accepted) { it.lastActivity=System.nanoTime(); it.inputBytes+=raw.size }
+            return accepted
+        }
         if(flows.size>=capacity) return false
         val epoch=generation
         val resource: Closeable
         val accept: (TransportPacket.Packet)->Boolean
         val run: ()->Unit
+        val state: ()->String
         if(h.protocol==6) {
             if(p.flags and 0x3f!=TcpProxySession.SYN || p.payload.isNotEmpty()) return false
             val session=TcpProxySession(p,tcpSocket,{ deliver(h,it,epoch) },{ allowed(h,epoch) },onError=onError)
-            resource=session; accept={ session.offer(it) }; run={ session.run() }
+            resource=session; accept={ session.offer(it) }; run={ session.run() }; state={ session.state() }
         } else {
             val session=UdpSession(h,epoch)
             if(!session.offer(p)) { session.close(); return false }
-            resource=session; accept={ session.offer(it) }; run={ session.run() }
+            resource=session; accept={ session.offer(it) }; run={ session.run() }; state={ "ACTIVE" }
         }
-        val entry=Entry(resource,accept)
+        val entry=Entry(resource,accept,inputBytes=raw.size.toLong(),state=state)
         flows[h]=entry
         try {
             workers.execute {
@@ -62,7 +67,7 @@ class PacketForwarder(
         return true
     }
     private fun allowed(h: PacketParser.Header, epoch: Long)=!closed.get() && generation==epoch && policy(h)
-    @Synchronized private fun deliver(h: PacketParser.Header, b: ByteArray, epoch: Long) { if(allowed(h,epoch)) { flows[h]?.lastActivity=System.nanoTime(); output(b) } }
+    @Synchronized private fun deliver(h: PacketParser.Header, b: ByteArray, epoch: Long) { if(allowed(h,epoch)) { flows[h]?.let { it.lastActivity=System.nanoTime(); it.outputBytes+=b.size }; output(b) } }
     @Synchronized private fun expireIdle() {
         val now=System.nanoTime()
         val iterator=flows.iterator()
@@ -73,6 +78,8 @@ class PacketForwarder(
         }
     }
     @Synchronized fun invalidate() { generation++; flows.values.forEach { it.closeable.close() }; flows.clear() }
+    data class Snapshot(val header: PacketParser.Header,val startedAt: Long,val tunInputBytes: Long,val tunOutputBytes: Long,val status: String)
+    @Synchronized fun snapshot()=flows.map { (h,e) -> Snapshot(h,e.startedAt,e.inputBytes,e.outputBytes,e.state()) }
     @Synchronized fun activeCount()=flows.size
     @Synchronized fun activeHeaders(): Set<PacketParser.Header> = flows.keys.toSet()
     @Synchronized override fun close() {
