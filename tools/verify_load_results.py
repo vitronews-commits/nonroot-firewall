@@ -15,7 +15,7 @@ record = records[0]
 if "status=OK" not in record:
     raise SystemExit("No successful probe result")
 if soak:
-    match = re.search(r"mode=soak bytes=(\d+) concurrentConnections=1 elapsedMs=(\d+)", record)
+    match = re.search(r"mode=soak bytes=(\d+) concurrentConnections=1 halfCloseRequired=true elapsedMs=(\d+)", record)
     if not match or int(match[1]) <= 0 or int(match[2]) < 3600000:
         raise SystemExit("Soak did not execute transfers for at least 60 minutes")
 else:

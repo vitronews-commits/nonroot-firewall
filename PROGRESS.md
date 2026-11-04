@@ -490,3 +490,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Unique-name system DNS default-deny probe must fail resolution and create per-app port-53 Pending on supporting OS builds. No generic resolver exception.
 - Lab starts with cellular disabled to prevent default-network switches invalidating isolated DNS control. Handover explicitly enables cellular; mobile DNS requires MOBILE-attributed DNS event, then cellular disables to test Wi-Fi return.
 - Rule evaluation stops at first matching global/application filter without intermediate matching-list allocations; precedence and mutable-list baseline tests retained.
+
+## Confirmed Android 10 external compatibility limits / diagnostic isolation
+- Source f278ced, run 41818439830 API 29: system DNS packets explicitly report UID 1051, zero packages, UDP destination 10.0.2.3:53, and are correctly denied. Attribution to requesting app is unavailable in this resolver build; no global DNS bypass is introduced.
+- Independent Socket AND NIO controls without VPN both received all 1 MiB then reset instead of EOF. This is an emulator/underlying-path compatibility failure independently of our TUN endpoint; clean EOF is still not accepted as passing.
+- Acceptance records system-DNS and client-first-half-close results separately and keeps their final assertions. Numeric 1/10/100 MiB payload tests can run on API 29 without claiming clean EOF, while a separate actual-TUN half-close test remains strict. API 29 overall acceptance still FAILs if either required capability fails.
+- The per-app DNS default-deny case is explicitly NOT_TESTED when framework identity is unavailable; this is not a passing skip. Other transport/lifecycle work continues.

@@ -69,7 +69,7 @@ class VpnAcceptanceTest {
             val allowed=probe("allow")
             assertTrue(allowed.replace("\n"," | ")+" events="+EngineEvents.snapshot().take(12),allowed.contains("status=OK"))
             val events=EngineEvents.snapshot()
-            for(port in listOf(53,28080,28081,28082,28083)) {
+            for(port in listOf(28080,28081,28082,28083)) {
                 assertTrue("Missing real probe transport on port $port: "+events.take(12),events.any {
                     it.connection?.packageName==probePackage && it.connection.port==port && it.result=="QUEUED"
                 })
@@ -79,9 +79,20 @@ class VpnAcceptanceTest {
                     it.result.startsWith("REPLY ") &&
                     (it.result.removePrefix("REPLY ").substringBefore(' ').toIntOrNull() ?: 0)>64
             })
+            val systemDns=probe("system_dns")
+            val systemDnsSupported=systemDns.contains("status=OK")
+            val dnsIdentityEvidence=EngineEvents.snapshot().filter { it.result.contains(":53") }.take(8).toString()
+            println("TUN_SYSTEM_DNS "+(if(systemDnsSupported) "PASS" else "FAIL")+" "+systemDns.replace("\n"," | ")+" "+dnsIdentityEvidence)
+            if(systemDnsSupported) assertTrue("Missing per-app system DNS",EngineEvents.snapshot().any {
+                it.connection?.packageName==probePackage && it.connection.port==53 && it.result=="QUEUED"
+            })
+            // Keep independent failures until the end so numeric transport/lifecycle diagnostics still execute.
+            val halfClose=probe("half_close")
+            val halfClosePassed=halfClose.contains("status=OK")
+            println("TUN_CLIENT_FIRST_HALF_CLOSE "+(if(halfClosePassed) "PASS" else "FAIL")+" "+halfClose.replace("\n"," | "))
             if(InstrumentationRegistry.getArguments().getString("loadAcceptance")=="true") {
                 val cpu=android.os.Process.getElapsedCpuTime(); val memory=android.os.Debug.getPss()
-                val stress=probe("stress")
+                val stress=probe(if(Build.VERSION.SDK_INT<30) "stress_payload" else "stress")
                 assertTrue(stress.replace("\n"," | ")+" / events="+EngineEvents.snapshot().take(25),stress.contains("status=OK"))
                 println("TUN_STRESS "+stress.replace("\n"," | ")+" engineCpuMs=${android.os.Process.getElapsedCpuTime()-cpu} enginePssBeforeKiB=$memory enginePssAfterKiB=${android.os.Debug.getPss()}")
             }
@@ -111,10 +122,12 @@ class VpnAcceptanceTest {
             assertTrue(unknown.replace("\n"," | "),unknown.contains("status=BLOCKED"))
             assertTrue("Expected exact UDP Pending request: "+EngineEvents.pending.snapshot()+" / "+EngineEvents.snapshot().take(12),
                 EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage && it.connection.ip=="10.0.2.2" && it.connection.port==28081 })
-            val deniedDns=probe("dns_block")
-            assertTrue(deniedDns.replace("\n"," | "),deniedDns.contains("status=BLOCKED"))
-            assertTrue("DNS did not reach exact per-app Pending policy",EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage && it.connection.port==53 })
-            println("TUN_DNS_DEFAULT_DENY PASS")
+            if(systemDnsSupported) {
+                val deniedDns=probe("dns_block")
+                assertTrue(deniedDns.replace("\n"," | "),deniedDns.contains("status=BLOCKED"))
+                assertTrue("DNS did not reach exact per-app Pending policy",EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage && it.connection.port==53 })
+                println("TUN_DNS_DEFAULT_DENY PASS")
+            } else println("TUN_DNS_DEFAULT_DENY NOT_TESTED_PER_APP; shared resolver remained blocked")
             // Toggle only emulator networking. Reconnect must rebuild DNS/routes while old TUN blocks.
             assertTrue(appStore.save(listOf(AppRule(probePackage,null,Decision.ALLOW))))
             try {
@@ -125,6 +138,8 @@ class VpnAcceptanceTest {
                 if(EngineEvents.network==NetworkKind.MOBILE) {
                     while(EngineEvents.status!="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
                     val mobile=probe("allow_mobile"); assertTrue(mobile.replace("\n"," | "),mobile.contains("status=OK"))
+                    val mobileDns=probe("system_dns_mobile")
+                    assertTrue(mobileDns.replace("\n"," | "),mobileDns.contains("status=OK"))
                     assertTrue("Mobile system DNS was not attributed",EngineEvents.snapshot().any { it.connection?.packageName==probePackage && it.connection.port==53 && it.connection.network==NetworkKind.MOBILE && it.result=="QUEUED" })
                     println("TUN_HANDOVER WIFI_TO_MOBILE PASS")
                 } else {
@@ -151,6 +166,8 @@ class VpnAcceptanceTest {
                 val restarted=probe("allow"); assertTrue(restarted.replace("\n"," | "),restarted.contains("status=OK"))
             }
             println("TUN_REPEATED_START_STOP PASS")
+            assertTrue("System DNS attribution unsupported/failed: "+systemDns.replace("\n"," | ")+" "+dnsIdentityEvidence,systemDnsSupported)
+            assertTrue("Clean client-first half-close failed (compare independent controls): "+halfClose.replace("\n"," | "),halfClosePassed)
         } finally {
             shell("svc wifi enable"); shell("svc data disable")
             context.stopService(Intent(context,FirewallVpnService::class.java))

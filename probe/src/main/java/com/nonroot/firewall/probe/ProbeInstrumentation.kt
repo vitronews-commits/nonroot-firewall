@@ -33,7 +33,7 @@ class ProbeInstrumentation : Instrumentation() {
             try {
                 val chunk=ByteArray(16384); var offset=0
                 while(offset<size) { val count=socket.getInputStream().read(chunk,0,minOf(chunk.size,size-offset)); check(count>0) { "Early EOF $offset/$size" }; for(i in 0 until count) check(chunk[i]==((offset+i)*37).toByte()) { "Corruption at ${offset+i}" }; offset+=count; progress="received=$offset/$size" }
-                check(socket.getInputStream().read()==-1) { "Missing half-close EOF" }
+                if(mode!="stress_payload") check(socket.getInputStream().read()==-1) { "Missing half-close EOF" }
                 writer.join(30000); check(!writer.isAlive); error.get()?.let { throw IllegalStateException("Upload failed",it) }
             } finally { socket.close(); writer.join(2000) }
         }
@@ -161,6 +161,18 @@ class ProbeInstrumentation : Instrumentation() {
                 }
                 finish(Activity.RESULT_OK,result); return
             }
+            if(mode in listOf("system_dns","system_dns_mobile")) {
+                stage="system-dns"
+                val name=if(mode=="system_dns_mobile") "example.com" else "firewall-test.invalid"
+                val addresses=java.net.InetAddress.getAllByName(name)
+                check(if(mode=="system_dns_mobile") addresses.isNotEmpty() else addresses.any { it.hostAddress=="192.0.2.123" })
+                result.putString("status","OK"); finish(Activity.RESULT_OK,result); return
+            }
+            if(mode=="half_close") {
+                stage="client-first-half-close"
+                transfer(1024*1024)
+                result.putString("status","OK"); finish(Activity.RESULT_OK,result); return
+            }
             if(mode=="dns_block") {
                 val name="blocked-"+java.util.UUID.randomUUID().toString().replace("-","")+".firewall-test.invalid"
                 try {
@@ -178,11 +190,11 @@ class ProbeInstrumentation : Instrumentation() {
                 result.putString("status","OK"); finish(Activity.RESULT_OK,result); return
             }
             val payload=ByteArray(1200) { (it*17).toByte() }
-            if(mode=="stress" || mode=="soak") {
+            if(mode in listOf("stress","stress_payload","soak")) {
                 val started=android.os.SystemClock.elapsedRealtimeNanos()
                 val cpu=android.os.Process.getElapsedCpuTime()
                 val pssBefore=android.os.Debug.getPss()
-                if(mode=="stress") {
+                if(mode!="soak") {
                     for(size in listOf(1,10,100)) {
                         stage="${size}MiB"; val begin=android.os.SystemClock.elapsedRealtimeNanos(); transfer(size*1024*1024); completed+=size.toLong()*1024*1024
                         sendStatus(0,Bundle().apply { putString("measurement","$stage bytes=${size*1024*1024} elapsedMs=${(android.os.SystemClock.elapsedRealtimeNanos()-begin)/1000000}") })
@@ -205,7 +217,7 @@ class ProbeInstrumentation : Instrumentation() {
                     }
                 }
                 result.putString("status","OK")
-                result.putString("metrics","mode=$mode bytes=$completed concurrentConnections=${if(mode=="stress") 4 else 1} elapsedMs=${(android.os.SystemClock.elapsedRealtimeNanos()-started)/1000000} cpuMs=${android.os.Process.getElapsedCpuTime()-cpu} pssBeforeKiB=$pssBefore pssAfterKiB=${android.os.Debug.getPss()}")
+                result.putString("metrics","mode=$mode bytes=$completed concurrentConnections=${if(mode!="soak") 4 else 1} halfCloseRequired=${mode!="stress_payload"} elapsedMs=${(android.os.SystemClock.elapsedRealtimeNanos()-started)/1000000} cpuMs=${android.os.Process.getElapsedCpuTime()-cpu} pssBeforeKiB=$pssBefore pssAfterKiB=${android.os.Debug.getPss()}")
                 finish(Activity.RESULT_OK,result); return
             }
             val tcpPayload=if(allowedMode()) ByteArray(65536) { (it*37).toByte() } else payload
@@ -235,13 +247,7 @@ class ProbeInstrumentation : Instrumentation() {
                     }
                 }
             }
-            if(allowedMode()) {
-                stage="system-dns"
-                val dnsName=if(mode=="allow_mobile") "example.com" else "firewall-test.invalid"
-                val addresses=java.net.InetAddress.getAllByName(dnsName)
-                check(if(mode=="allow_mobile") addresses.isNotEmpty() else addresses.any { it.hostAddress=="192.0.2.123" }) { "System DNS through app policy failed" }
-                stage="dns-transports"; dnsTransports()
-            }
+            if(allowedMode()) { stage="dns-transports"; dnsTransports() }
             if(allowedMode() || mode=="udp_block") {
                 DatagramSocket().use { udp ->
                     udp.soTimeout=3000; udp.connect(InetSocketAddress("10.0.2.2",28081))
