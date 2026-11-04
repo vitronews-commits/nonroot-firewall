@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 class TcpLoadTest {
-    private fun transfer(size: Int) {
+    private fun transfer(size: Int,ipv6: Boolean=false) {
         val begin=System.nanoTime()
         val bean=Class.forName("java.lang.management.ManagementFactory").getMethod("getOperatingSystemMXBean").invoke(null)
         val cpuMethod=Class.forName("com.sun.management.OperatingSystemMXBean").getMethod("getProcessCpuTime")
@@ -18,7 +18,7 @@ class TcpLoadTest {
         val cpuBefore=cpu()
         val runtime=Runtime.getRuntime(); val heapBefore=runtime.totalMemory()-runtime.freeMemory()
         val failure=AtomicReference<Throwable?>()
-        ServerSocket(0,4,InetAddress.getByName("127.0.0.1")).use { server ->
+        ServerSocket(0,4,InetAddress.getByName(if(ipv6) "::1" else "127.0.0.1")).use { server ->
             server.soTimeout=10000
             val echo=Thread {
                 try { server.accept().use { peer ->
@@ -28,7 +28,7 @@ class TcpLoadTest {
                     peer.shutdownOutput()
                 } } catch(t: Throwable) { failure.set(t) }
             }.apply { start() }
-            val h=PacketParser.Header("10.23.0.2","127.0.0.1",6,48000,server.localPort,false)
+            val h=PacketParser.Header(if(ipv6) "fd23::2" else "10.23.0.2",if(ipv6) "::1" else "127.0.0.1",6,48000,server.localPort,false)
             val q=LinkedBlockingQueue<ByteArray>(1024)
             val s=TcpProxySession(TransportPacket.Packet(h,byteArrayOf(),100,0,2,65535,1460),
                 { SocketChannel.open().socket() },{ check(q.offer(it)) },{ true },30000,500,{ failure.set(it) })
@@ -43,7 +43,7 @@ class TcpLoadTest {
                     check(System.nanoTime()<deadline) { "Transfer timed out upload=$upload received=$received ack=$acknowledged window=$window failure=${failure.get()}" }
                     var budget=16
                     while(upload<size && budget-->0 && 101L+upload-acknowledged<window) {
-                        val n=minOf(1460,size-upload,(window-(101L+upload-acknowledged)).toInt())
+                        val n=minOf(if(ipv6) 1440 else 1460,size-upload,(window-(101L+upload-acknowledged)).toInt())
                         if(n<=0) break
                         val b=ByteArray(n) { ((upload+it)*37).toByte() }
                         send(TransportPacket.Packet(h,b,101L+upload,downSeq,24,65535)); upload+=n
@@ -66,6 +66,7 @@ class TcpLoadTest {
             } finally { s.close(); worker.join(3000); echo.join(3000); assertFalse(worker.isAlive) }
         }
     }
+    @Test fun ipv6NioMiBHalfClose()=transfer(1024*1024,true)
     @Test fun oneMiB()=transfer(1024*1024)
     @Test fun tenMiB()=transfer(10*1024*1024)
     @Test fun hundredMiB()=transfer(100*1024*1024)

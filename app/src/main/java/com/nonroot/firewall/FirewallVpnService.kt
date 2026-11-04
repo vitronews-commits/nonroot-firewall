@@ -231,7 +231,8 @@ class FirewallVpnService : VpnService() {
                 if(trafficLogs.allow(h,if(payloadReply) 3 else 1)) EngineEvents.record(h?.let { owners[it]?.connection },"REPLY ${bytes.size} bytes",h?.protocol)
             },onError={ error ->
                 EngineEvents.record(null,"Transport failure: ${error.javaClass.simpleName}: ${error.message}")
-            },pathMtu={ underlyingMtu },authorizeIo=::allowed,destination={ NetworkDestination.resolve(it,networkInterface) })
+            },pathMtu={ underlyingMtu },authorizeIo=::allowed,destination={ NetworkDestination.resolve(it,networkInterface) },
+                onFlowError={ h,error -> EngineEvents.record(owners[h]?.connection,"Transport failure: ${error.javaClass.simpleName}: ${error.message}",h.protocol) })
             forwarder=engine
             EngineEvents.liveConnections={ engine.snapshot().mapNotNull { flow ->
                 owners[flow.header]?.connection?.let { c -> EngineEvents.LiveConnection(c,flow.header.protocol,flow.header.sourcePort,flow.status,flow.tunInputBytes,flow.tunOutputBytes) }

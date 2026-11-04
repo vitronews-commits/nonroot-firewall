@@ -21,7 +21,8 @@ class PacketForwarder(
     private val onError: (Exception)->Unit={},
     private val pathMtu: ()->Int={ 1500 },
     private val authorizeIo: (PacketParser.Header)->Boolean=policy,
-    private val destination: (PacketParser.Header)->InetSocketAddress={ InetSocketAddress(it.destination,it.destinationPort!!) }
+    private val destination: (PacketParser.Header)->InetSocketAddress={ InetSocketAddress(it.destination,it.destinationPort!!) },
+    private val onFlowError: (PacketParser.Header,Exception)->Unit={ _,e -> onError(e) }
 ): Closeable {
     init { require(capacity in 1..128) }
     private data class Entry(val closeable: Closeable, val accept: (TransportPacket.Packet)->Boolean, var lastActivity: Long=System.nanoTime(), val startedAt: Long=System.currentTimeMillis(), var inputBytes: Long=0,var outputBytes: Long=0,val state: ()->String={ "ACTIVE" })
@@ -54,7 +55,7 @@ class PacketForwarder(
         val state: ()->String
         if(h.protocol==6) {
             if(p.flags and 0x3f!=TcpProxySession.SYN || p.payload.isNotEmpty()) return false
-            val session=TcpProxySession(p,tcpSocket,{ deliver(h,it,epoch) },{ valid(h,epoch) },onError=onError,authorizeUpload={ allowed(h,epoch) },destination={ destination(h) })
+            val session=TcpProxySession(p,tcpSocket,{ deliver(h,it,epoch) },{ valid(h,epoch) },onError={ onFlowError(h,it) },authorizeUpload={ allowed(h,epoch) },destination={ destination(h) })
             resource=session; accept={ session.offer(it) }; run={ session.run() }; state={ session.state() }
         } else {
             val session=UdpSession(h,epoch)
@@ -150,7 +151,7 @@ class PacketForwarder(
                         } catch(_: SocketTimeoutException) { }
                     }
                 }
-            } catch(e: Exception) { if(!stopped.get() && !closed.get()) onError(e) }
+            } catch(e: Exception) { if(!stopped.get() && !closed.get()) onFlowError(h,e) }
             finally { close(); try { selector?.close() } catch(_: Exception) { } }
         }
         override fun close() {

@@ -472,3 +472,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 ## Independent failure diagnostics while runtime is unavailable
 - CI prints direct Socket/SocketChannel controls and preserves synthetic host logs. Temporary read-only artifact diagnostic workflow inspects prior controls through GitHub while local execution is disconnected.
 - Disposable emulator disables captive-portal probing (isolated DNS cannot validate Internet domains) and Private DNS auto-probes to make plaintext system DNS attribution deterministic. Test-lab configuration only; no production change or claim about DoT.
+
+## IPv6 NIO and diagnostic attribution regression — CI pending
+- Added 1 MiB real-socket IPv6 NIO TCP half-close coverage, and both-family UDP tests at zero/1200/MTU-limit payloads with foreign-sender rejection.
+- Transport errors now retain the original connection/protocol for filtered Logs; an asynchronous failure regression checks attribution.
+- Expected full JVM total: 158 including the unchanged 125 baseline. This is an expectation until CI XML is inspected, not a success claim.
