@@ -16,28 +16,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CURRENT_HEAD: ${{ github.sha }}
         run: |
-          # An already-queued earlier cleanup used its own commit SHA. Let it finish
-          # before selecting the newest run, otherwise it can cancel newer verification.
           for attempt in $(seq 1 60); do
-            state=$(gh api repos/vitronews-commits/nonroot-firewall/actions/runs/41864438886 --jq .status)
-            [ "$state" = "completed" ] && break
+            gh api 'repos/vitronews-commits/nonroot-firewall/actions/runs?branch=development%2Fdaily-use&per_page=100' > /tmp/runs.json
+            current_run=$(python3 - <<'PYCODE'
+          import json, os
+          runs = json.load(open("/tmp/runs.json"))["workflow_runs"]
+          matches = [r for r in runs if r["name"] == "Android verification" and r["head_sha"] == os.environ["CURRENT_HEAD"]]
+          print(max(matches, key=lambda r: r["id"])["id"] if matches else "")
+          PYCODE
+            )
+            [ -n "$current_run" ] && break
             sleep 5
           done
-          [ "$state" = "completed" ] || exit 1
-          gh api 'repos/vitronews-commits/nonroot-firewall/actions/runs?branch=development%2Fdaily-use&per_page=100' > /tmp/runs.json
+          [ -n "$current_run" ] || { echo 'Current Android verification run not found'; exit 1; }
+          export CURRENT_RUN="$current_run"
           python3 - <<'PYCODE' > /tmp/selection.txt
-          import json
+          import json, os
           runs = [r for r in json.load(open("/tmp/runs.json"))["workflow_runs"] if r["name"] == "Android verification"]
-          newest = max(runs, key=lambda r: r["id"])
-          print("KEEP", newest["id"])
+          current = int(os.environ["CURRENT_RUN"])
+          print("KEEP", current)
           for run in runs:
-              if run["id"] not in (newest["id"], 41859966632) and run["status"] in ("queued", "in_progress"):
+              if run["id"] != current and run["status"] in ("queued", "in_progress"):
                   print("CANCEL", run["id"])
           PYCODE
           while read -r action run; do
             if [ "$action" = "KEEP" ]; then latest_run="$run"; else gh run cancel "$run" --repo vitronews-commits/nonroot-firewall || true; fi
           done < /tmp/selection.txt
-          result=$(gh api "repos/vitronews-commits/nonroot-firewall/actions/runs/$latest_run" --jq .conclusion)
-          if [ "$result" = "cancelled" ]; then
-            gh run rerun "$latest_run" --repo vitronews-commits/nonroot-firewall
-          fi
