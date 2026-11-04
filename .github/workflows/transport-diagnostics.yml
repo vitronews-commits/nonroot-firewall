@@ -17,11 +17,17 @@ jobs:
         run: |
           gh run download 41816279576 --repo vitronews-commits/nonroot-firewall --name instrumentation-results-api-29 --dir reports29
           gh run download 41816279576 --repo vitronews-commits/nonroot-firewall --name instrumentation-results-api-35 --dir reports35
+          gh run download 41801468947 --repo vitronews-commits/nonroot-firewall --name verification-reports --dir baseline
           python3 - <<'PY'
           from pathlib import Path
+          import xml.etree.ElementTree as ET
+          import json
           for root in (Path("reports29"), Path("reports35")):
               for path in root.rglob("*"):
                   if path.is_file() and path.name in ("direct-socket.txt","direct-channel.txt","firewall-echo.log"):
                       print(str(path))
                       print("\n".join(path.read_text(errors="replace").splitlines()[-40:]))
+          ids = sorted(c.get("classname","")+"."+c.get("name","") for p in Path("baseline").rglob("TEST-*.xml") for c in ET.parse(p).iter("testcase"))
+          assert len(ids) == 125
+          print("BASELINE_TEST_IDS "+json.dumps(ids))
           PY

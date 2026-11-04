@@ -40,8 +40,8 @@ class VpnAcceptanceTest {
             assertTrue(ipStore.save(emptyList()))
             assertTrue(appStore.save(listOf(AppRule(context.packageName,null,Decision.ALLOW))))
             context.startForegroundService(Intent(context,FirewallVpnService::class.java))
-            val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
-            while(EngineEvents.status!="RUNNING" && System.nanoTime()<deadline) Thread.sleep(100)
+            val deadline=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
+            while(EngineEvents.status!="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<deadline) Thread.sleep(100)
             assertEquals(EngineEvents.snapshot().take(5).toString(),"RUNNING",EngineEvents.status)
             repeat(3) { context.startForegroundService(Intent(context,FirewallVpnService::class.java)) }
             Thread.sleep(250)
@@ -86,13 +86,16 @@ class VpnAcceptanceTest {
                 println("TUN_STRESS "+stress.replace("\n"," | ")+" engineCpuMs=${android.os.Process.getElapsedCpuTime()-cpu} enginePssBeforeKiB=$memory enginePssAfterKiB=${android.os.Debug.getPss()}")
             }
             if(InstrumentationRegistry.getArguments().getString("soakAcceptance")=="true") {
-                val begin=System.nanoTime(); val cpu=android.os.Process.getElapsedCpuTime(); val memory=android.os.Debug.getPss()
-                shell("input keyevent 223")
-                Thread.sleep(500)
-                assertTrue("Screen did not enter sleep",shell("dumpsys power").contains("mWakefulness=Asleep"))
-                val soak=try { probe("soak") } finally { shell("input keyevent 224") }
+                val begin=android.os.SystemClock.elapsedRealtimeNanos(); val cpu=android.os.Process.getElapsedCpuTime(); val memory=android.os.Debug.getPss()
+                val wake=context.getSystemService(android.os.PowerManager::class.java).newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK,"NonRootFirewallTest:soak")
+                wake.acquire(java.util.concurrent.TimeUnit.MINUTES.toMillis(70))
+                val soak=try {
+                    shell("input keyevent 223"); Thread.sleep(500)
+                    assertTrue("Screen did not enter sleep",shell("dumpsys power").contains("mWakefulness=Asleep"))
+                    probe("soak")
+                } finally { if(wake.isHeld) wake.release(); shell("input keyevent 224") }
                 assertTrue(soak.replace("\n"," | "),soak.contains("status=OK"))
-                assertTrue(java.util.concurrent.TimeUnit.NANOSECONDS.toMinutes(System.nanoTime()-begin)>=60)
+                assertTrue(java.util.concurrent.TimeUnit.NANOSECONDS.toMinutes(android.os.SystemClock.elapsedRealtimeNanos()-begin)>=60)
                 println("TUN_SOAK enginePssPeakKiB=$peakPss screenOffAtStart=true "+soak.replace("\n"," | ")+" engineCpuMs=${android.os.Process.getElapsedCpuTime()-cpu} enginePssBeforeKiB=$memory enginePssAfterKiB=${android.os.Debug.getPss()}")
             }
             var sawReady=false
@@ -112,33 +115,33 @@ class VpnAcceptanceTest {
             assertTrue(appStore.save(listOf(AppRule(probePackage,null,Decision.ALLOW))))
             try {
                 shell("svc data enable"); shell("svc wifi disable")
-                var limit=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
-                while(EngineEvents.network==NetworkKind.WIFI && System.nanoTime()<limit) Thread.sleep(100)
+                var limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
+                while(EngineEvents.network==NetworkKind.WIFI && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
                 assertNotEquals("Wi-Fi loss callback not observed",NetworkKind.WIFI,EngineEvents.network)
                 if(EngineEvents.network==NetworkKind.MOBILE) {
-                    while(EngineEvents.status!="RUNNING" && System.nanoTime()<limit) Thread.sleep(100)
+                    while(EngineEvents.status!="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
                     val mobile=probe("allow"); assertTrue(mobile.replace("\n"," | "),mobile.contains("status=OK"))
                     println("TUN_HANDOVER WIFI_TO_MOBILE PASS")
                 } else {
-                    while(EngineEvents.status=="RUNNING" && System.nanoTime()<limit) Thread.sleep(100)
+                    while(EngineEvents.status=="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
                     assertTrue("Offline gate not retained",EngineEvents.status.startsWith("WAITING"))
                     assertTrue(EngineEvents.liveConnections().isEmpty())
                     println("TUN_HANDOVER WIFI_TO_OFFLINE PASS; WIFI_TO_MOBILE NOT_TESTED (no cellular path)")
                 }
             } finally { shell("svc wifi enable") }
-            var limit=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(45)
-            while((EngineEvents.network!=NetworkKind.WIFI || EngineEvents.status!="RUNNING") && System.nanoTime()<limit) Thread.sleep(100)
+            var limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(45)
+            while((EngineEvents.network!=NetworkKind.WIFI || EngineEvents.status!="RUNNING") && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
             assertEquals(NetworkKind.WIFI,EngineEvents.network); assertEquals("RUNNING",EngineEvents.status)
             val reconnect=probe("allow"); assertTrue(reconnect.replace("\n"," | "),reconnect.contains("status=OK"))
             println("TUN_RECONNECT WIFI_TCP_UDP_DNS PASS")
             repeat(2) {
                 context.stopService(Intent(context,FirewallVpnService::class.java))
-                limit=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
-                while(EngineEvents.status!="OFF" && System.nanoTime()<limit) Thread.sleep(50)
+                limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
+                while(EngineEvents.status!="OFF" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(50)
                 assertEquals("OFF",EngineEvents.status); assertTrue(EngineEvents.liveConnections().isEmpty())
                 context.startForegroundService(Intent(context,FirewallVpnService::class.java))
-                limit=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
-                while(EngineEvents.status!="RUNNING" && System.nanoTime()<limit) Thread.sleep(100)
+                limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
+                while(EngineEvents.status!="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
                 assertEquals("RUNNING",EngineEvents.status)
                 val restarted=probe("allow"); assertTrue(restarted.replace("\n"," | "),restarted.contains("status=OK"))
             }

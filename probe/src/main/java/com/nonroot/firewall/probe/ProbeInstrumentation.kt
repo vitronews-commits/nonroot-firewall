@@ -17,10 +17,8 @@ class ProbeInstrumentation : Instrumentation() {
     private var completed=0L
     @Volatile private var progress=""
     private fun transfer(size: Int) {
-        val connection=if(mode=="direct_channel") java.nio.channels.SocketChannel.open().socket().also {
-            it.bind(InetSocketAddress(0))
-            targetContext.getSystemService(android.net.ConnectivityManager::class.java).activeNetwork?.bindSocket(it)
-        } else Socket()
+        if(mode=="direct_channel") { directChannelTransfer(size); return }
+        val connection=Socket()
         connection.use { socket ->
             socket.soTimeout=30000; socket.connect(InetSocketAddress("10.0.2.2",28080),5000)
             val error=java.util.concurrent.atomic.AtomicReference<Throwable?>()
@@ -37,6 +35,46 @@ class ProbeInstrumentation : Instrumentation() {
                 check(socket.getInputStream().read()==-1) { "Missing half-close EOF" }
                 writer.join(30000); check(!writer.isAlive); error.get()?.let { throw IllegalStateException("Upload failed",it) }
             } finally { socket.close(); writer.join(2000) }
+        }
+    }
+    private fun directChannelTransfer(size: Int) {
+        java.nio.channels.SocketChannel.open().use { channel ->
+            channel.socket().bind(InetSocketAddress(0))
+            targetContext.getSystemService(android.net.ConnectivityManager::class.java).activeNetwork?.bindSocket(channel.socket())
+            channel.socket().connect(InetSocketAddress("10.0.2.2",28080),5000)
+            channel.configureBlocking(false)
+            java.nio.channels.Selector.open().use { selected ->
+                val key=channel.register(selected,java.nio.channels.SelectionKey.OP_READ or java.nio.channels.SelectionKey.OP_WRITE)
+                val up=java.nio.ByteBuffer.allocate(16384).apply { limit(0) }
+                val down=java.nio.ByteBuffer.allocate(16384)
+                var written=0; var read=0; var fin=false
+                val deadline=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(60)
+                while(true) {
+                    check(android.os.SystemClock.elapsedRealtimeNanos()<deadline) { "NIO direct deadline written=$written read=$read" }
+                    var progress=false
+                    if(written<size) {
+                        if(!up.hasRemaining()) {
+                            up.clear(); val count=minOf(up.capacity(),size-written)
+                            for(i in 0 until count) up.put(((written+i)*37).toByte())
+                            up.flip()
+                        }
+                        val n=channel.write(up); written+=n; progress=n>0
+                    }
+                    if(written==size && !fin) { channel.shutdownOutput(); fin=true }
+                    down.clear()
+                    val n=channel.read(down)
+                    if(n<0) { check(read==size) { "NIO direct early EOF $read/$size" }; break }
+                    if(n>0) {
+                        down.flip()
+                        repeat(n) { check(down.get()==((read+it)*37).toByte()) }
+                        read+=n; progress=true; this.progress="received="+read.toString()+"/"+size.toString()
+                    }
+                    if(!progress) {
+                        key.interestOps(java.nio.channels.SelectionKey.OP_READ or if(written<size) java.nio.channels.SelectionKey.OP_WRITE else 0)
+                        selected.select(1000); selected.selectedKeys().clear()
+                    }
+                }
+            }
         }
     }
     private fun dnsTransports() {
@@ -103,8 +141,8 @@ class ProbeInstrumentation : Instrumentation() {
                         DatagramSocket().use { socket ->
                             socket.soTimeout=5
                             sendStatus(0,Bundle().apply { putString("phase","READY") })
-                            val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(12)
-                            while(System.nanoTime()<deadline) {
+                            val deadline=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(12)
+                            while(android.os.SystemClock.elapsedRealtimeNanos()<deadline) {
                                 attempts++
                                 try {
                                     socket.send(DatagramPacket(packet,packet.size,InetSocketAddress("10.0.2.2",28084)))
@@ -132,33 +170,33 @@ class ProbeInstrumentation : Instrumentation() {
             }
             val payload=ByteArray(1200) { (it*17).toByte() }
             if(mode=="stress" || mode=="soak") {
-                val started=System.nanoTime()
+                val started=android.os.SystemClock.elapsedRealtimeNanos()
                 val cpu=android.os.Process.getElapsedCpuTime()
                 val pssBefore=android.os.Debug.getPss()
                 if(mode=="stress") {
                     for(size in listOf(1,10,100)) {
-                        stage="${size}MiB"; val begin=System.nanoTime(); transfer(size*1024*1024); completed+=size.toLong()*1024*1024
-                        sendStatus(0,Bundle().apply { putString("measurement","$stage bytes=${size*1024*1024} elapsedMs=${(System.nanoTime()-begin)/1000000}") })
+                        stage="${size}MiB"; val begin=android.os.SystemClock.elapsedRealtimeNanos(); transfer(size*1024*1024); completed+=size.toLong()*1024*1024
+                        sendStatus(0,Bundle().apply { putString("measurement","$stage bytes=${size*1024*1024} elapsedMs=${(android.os.SystemClock.elapsedRealtimeNanos()-begin)/1000000}") })
                     }
                     stage="concurrent"; val errors=java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
                     val threads=(1..4).map { Thread { try { transfer(1024*1024) } catch(t: Throwable) { errors.add(t) } }.apply { start() } }
                     threads.forEach { it.join(120000); check(!it.isAlive) }; check(errors.isEmpty()) { errors.toString() }; completed+=4*1024*1024
                 } else {
                     check(durationSeconds>=3600) { "Soak requires at least 60 minutes" }
-                    val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(durationSeconds.toLong())
-                    var heartbeatAt=System.nanoTime()
-                    while(System.nanoTime()<deadline) {
+                    val deadline=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(durationSeconds.toLong())
+                    var heartbeatAt=android.os.SystemClock.elapsedRealtimeNanos()
+                    while(android.os.SystemClock.elapsedRealtimeNanos()<deadline) {
                         stage="soak-transfer"; transfer(65536); completed+=65536
                         DatagramSocket().use { udp -> udp.soTimeout=5000; udp.connect(InetSocketAddress("10.0.2.2",28081)); udp.send(DatagramPacket(payload,payload.size)); val answer=DatagramPacket(ByteArray(1500),1500); udp.receive(answer); check(answer.data.copyOf(answer.length).contentEquals(payload)) }
-                        if(System.nanoTime()-heartbeatAt>=java.util.concurrent.TimeUnit.SECONDS.toNanos(60)) {
-                            heartbeatAt=System.nanoTime()
-                            sendStatus(0,Bundle().apply { putString("heartbeat","elapsedMs=${(System.nanoTime()-started)/1000000} bytes=$completed pssKiB=${android.os.Debug.getPss()}") })
+                        if(android.os.SystemClock.elapsedRealtimeNanos()-heartbeatAt>=java.util.concurrent.TimeUnit.SECONDS.toNanos(60)) {
+                            heartbeatAt=android.os.SystemClock.elapsedRealtimeNanos()
+                            sendStatus(0,Bundle().apply { putString("heartbeat","elapsedMs=${(android.os.SystemClock.elapsedRealtimeNanos()-started)/1000000} bytes=$completed pssKiB=${android.os.Debug.getPss()}") })
                         }
                         Thread.sleep(5000)
                     }
                 }
                 result.putString("status","OK")
-                result.putString("metrics","mode=$mode bytes=$completed concurrentConnections=${if(mode=="stress") 4 else 1} elapsedMs=${(System.nanoTime()-started)/1000000} cpuMs=${android.os.Process.getElapsedCpuTime()-cpu} pssBeforeKiB=$pssBefore pssAfterKiB=${android.os.Debug.getPss()}")
+                result.putString("metrics","mode=$mode bytes=$completed concurrentConnections=${if(mode=="stress") 4 else 1} elapsedMs=${(android.os.SystemClock.elapsedRealtimeNanos()-started)/1000000} cpuMs=${android.os.Process.getElapsedCpuTime()-cpu} pssBeforeKiB=$pssBefore pssAfterKiB=${android.os.Debug.getPss()}")
                 finish(Activity.RESULT_OK,result); return
             }
             val tcpPayload=if(mode=="allow") ByteArray(65536) { (it*37).toByte() } else payload

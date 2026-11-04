@@ -24,7 +24,8 @@ class TcpProxySession(
     private val initialSequence: Long=SecureRandom().nextInt().toLong() and MASK,
     private val onError: (Exception)->Unit={},
     private val authorizeUpload: ()->Boolean=permitted,
-    private val destination: ()->InetSocketAddress={ InetSocketAddress(initial.header.destination,initial.header.destinationPort!!) }
+    private val destination: ()->InetSocketAddress={ InetSocketAddress(initial.header.destination,initial.header.destinationPort!!) },
+    private val nanoTime: ()->Long={ System.nanoTime() }
 ): Closeable {
     companion object {
         const val FIN=1; const val SYN=2; const val RST=4; const val PSH=8; const val ACK=16
@@ -48,7 +49,7 @@ class TcpProxySession(
     private var outputShutdown=false
     private var remoteFin=false
     private var peerWindow=initial.window
-    private var lastActivity=System.nanoTime()
+    private var lastActivity=nanoTime()
     private val sent=ArrayDeque<Sent>()
     private val upload=ByteBuffer.allocate(RECEIVE_WINDOW)
     private var windowSequence=initial.sequence
@@ -71,7 +72,7 @@ class TcpProxySession(
         return true
     }
     fun isClosed()=closed.get()
-    private fun now()=System.nanoTime()/1_000_000
+    private fun now()=nanoTime()/1_000_000
     private fun emit(payload: ByteArray=byteArrayOf(),flags: Int=ACK,tracked: Boolean=false) {
         if(closed.get() || !permitted()) return
         val sequence=serverNext
@@ -101,7 +102,7 @@ class TcpProxySession(
             emit(flags=SYN or ACK,tracked=true)
             val buffer=ByteArray(sendMss)
             while(!closed.get() && permitted()) {
-                if((System.nanoTime()-lastActivity)/1_000_000>=idleMs) break
+                if((nanoTime()-lastActivity)/1_000_000>=idleMs) break
                 repeat(32) { incoming.poll()?.let { process(it,upstream) } }
                 if(closed.get()) break
                 if(upload.position()>0) {
@@ -126,7 +127,7 @@ class TcpProxySession(
                         val count=if(channel!=null) channel.read(ByteBuffer.wrap(buffer,0,minOf(buffer.size,available)))
                             else if(upstream.getInputStream().available()>0) upstream.getInputStream().read(buffer,0,minOf(buffer.size,available)) else 0
                         if(count<0) { remoteFin=true; state="REMOTE_HALF_CLOSED"; emit(flags=FIN or ACK,tracked=true); break }
-                        if(count>0) { lastActivity=System.nanoTime(); emit(buffer.copyOf(count),ACK or PSH,true); progressed=true }
+                        if(count>0) { lastActivity=nanoTime(); emit(buffer.copyOf(count),ACK or PSH,true); progressed=true }
                         else break
                     }
                     // Plain-socket harness needs EOF detection; production uses selector/channel EOF.
@@ -135,7 +136,7 @@ class TcpProxySession(
                         try {
                             val count=upstream.getInputStream().read(buffer,0,minOf(buffer.size,peerWindow))
                             if(count<0) { remoteFin=true; state="REMOTE_HALF_CLOSED"; emit(flags=FIN or ACK,tracked=true) }
-                            else if(count>0) { lastActivity=System.nanoTime(); emit(buffer.copyOf(count),ACK or PSH,true); progressed=true }
+                            else if(count>0) { lastActivity=nanoTime(); emit(buffer.copyOf(count),ACK or PSH,true); progressed=true }
                         } catch(_: java.net.SocketTimeoutException) { }
                     }
                 }
@@ -204,7 +205,7 @@ class TcpProxySession(
                 val first=sent.first(); if(permitted()) reply(first.bytes); first.at=now()
             }
         }
-        established=true; if(!clientFin && !remoteFin) state="ESTABLISHED"; lastActivity=System.nanoTime()
+        established=true; if(!clientFin && !remoteFin) state="ESTABLISHED"; lastActivity=nanoTime()
         if(p.sequence!=clientNext) { emit(); return }
         if(p.payload.isNotEmpty()) {
             if(clientFin || p.payload.size>upload.remaining()) { emit(); return }

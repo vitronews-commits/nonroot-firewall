@@ -22,10 +22,11 @@ class PacketForwarder(
     private val pathMtu: ()->Int={ 1500 },
     private val authorizeIo: (PacketParser.Header)->Boolean=policy,
     private val destination: (PacketParser.Header)->InetSocketAddress={ InetSocketAddress(it.destination,it.destinationPort!!) },
-    private val onFlowError: (PacketParser.Header,Exception)->Unit={ _,e -> onError(e) }
+    private val onFlowError: (PacketParser.Header,Exception)->Unit={ _,e -> onError(e) },
+    private val nanoTime: ()->Long={ System.nanoTime() }
 ): Closeable {
     init { require(capacity in 1..128) }
-    private data class Entry(val closeable: Closeable, val accept: (TransportPacket.Packet)->Boolean, var lastActivity: Long=System.nanoTime(), val startedAt: Long=System.currentTimeMillis(), var inputBytes: Long=0,var outputBytes: Long=0,val state: ()->String={ "ACTIVE" })
+    private data class Entry(val closeable: Closeable, val accept: (TransportPacket.Packet)->Boolean, var lastActivity: Long, val startedAt: Long=System.currentTimeMillis(), var inputBytes: Long=0,var outputBytes: Long=0,val state: ()->String={ "ACTIVE" })
     private val flows=HashMap<PacketParser.Header,Entry>()
     private val workers=ThreadPoolExecutor(0,capacity,30,TimeUnit.SECONDS,SynchronousQueue())
     @Volatile private var generation=0L
@@ -44,7 +45,7 @@ class PacketForwarder(
         }
         flows[h]?.let {
             val accepted=it.accept(p)
-            if(accepted) { it.lastActivity=System.nanoTime(); it.inputBytes+=raw.size }
+            if(accepted) { it.lastActivity=nanoTime(); it.inputBytes+=raw.size }
             return accepted
         }
         if(flows.size>=capacity) return false
@@ -55,14 +56,14 @@ class PacketForwarder(
         val state: ()->String
         if(h.protocol==6) {
             if(p.flags and 0x3f!=TcpProxySession.SYN || p.payload.isNotEmpty()) return false
-            val session=TcpProxySession(p,tcpSocket,{ deliver(h,it,epoch) },{ valid(h,epoch) },onError={ onFlowError(h,it) },authorizeUpload={ allowed(h,epoch) },destination={ destination(h) })
+            val session=TcpProxySession(p,tcpSocket,{ deliver(h,it,epoch) },{ valid(h,epoch) },onError={ onFlowError(h,it) },authorizeUpload={ allowed(h,epoch) },destination={ destination(h) },nanoTime=nanoTime)
             resource=session; accept={ session.offer(it) }; run={ session.run() }; state={ session.state() }
         } else {
             val session=UdpSession(h,epoch)
             if(!session.offer(p)) { session.close(); return false }
             resource=session; accept={ session.offer(it) }; run={ session.run() }; state={ "ACTIVE" }
         }
-        val entry=Entry(resource,accept,inputBytes=raw.size.toLong(),state=state)
+        val entry=Entry(resource,accept,lastActivity=nanoTime(),inputBytes=raw.size.toLong(),state=state)
         flows[h]=entry
         try {
             workers.execute {
@@ -76,9 +77,9 @@ class PacketForwarder(
     }
     private fun valid(h: PacketParser.Header, epoch: Long)=!closed.get() && generation==epoch && policy(h)
     private fun allowed(h: PacketParser.Header, epoch: Long)=valid(h,epoch) && authorizeIo(h)
-    @Synchronized private fun deliver(h: PacketParser.Header, b: ByteArray, epoch: Long) { if(allowed(h,epoch)) { output(b); flows[h]?.let { it.lastActivity=System.nanoTime(); it.outputBytes+=b.size } } }
+    @Synchronized private fun deliver(h: PacketParser.Header, b: ByteArray, epoch: Long) { if(allowed(h,epoch)) { output(b); flows[h]?.let { it.lastActivity=nanoTime(); it.outputBytes+=b.size } } }
     @Synchronized private fun expireIdle() {
-        val now=System.nanoTime()
+        val now=nanoTime()
         val iterator=flows.iterator()
         while(iterator.hasNext()) {
             val e=iterator.next()
@@ -115,11 +116,11 @@ class PacketForwarder(
                     val selected=java.nio.channels.Selector.open(); selector=selected
                     channel.configureBlocking(false); channel.register(selected,java.nio.channels.SelectionKey.OP_READ)
                 } else null
-                var last=System.nanoTime()
+                var last=nanoTime()
                 val maxPayload=1500-(if(':' in h.source) 40 else 20)-8
                 val buffer=ByteArray(maxPayload+1)
                 val nio=java.nio.ByteBuffer.wrap(buffer)
-                while(!stopped.get() && valid(h,epoch) && (System.nanoTime()-last)/1_000_000<30_000) {
+                while(!stopped.get() && valid(h,epoch) && (nanoTime()-last)/1_000_000<30_000) {
                     var sendBlocked=false
                     repeat(32) {
                         queue.poll()?.let { b ->
@@ -127,8 +128,8 @@ class PacketForwarder(
                             if(channel!=null) {
                                 val count=channel.send(java.nio.ByteBuffer.wrap(b),remote)
                                 if(count==0 && b.isNotEmpty()) { queue.offer(b); sendBlocked=true }
-                                else last=System.nanoTime()
-                            } else { s.send(DatagramPacket(b,b.size,remote)); last=System.nanoTime() }
+                                else last=nanoTime()
+                            } else { s.send(DatagramPacket(b,b.size,remote)); last=nanoTime() }
                         }
                     }
                     if(channel!=null) {
@@ -137,7 +138,7 @@ class PacketForwarder(
                             nio.clear()
                             val sender=channel.receive(nio) ?: break
                             if(sender!=remote) continue
-                            last=System.nanoTime()
+                            last=nanoTime()
                             if(nio.position()<=maxPayload) deliver(h,TransportPacket.build(TransportPacket.reverse(h),buffer.copyOf(nio.position())),epoch)
                         }
                         if(queue.isNotEmpty() && !sendBlocked) continue
@@ -146,7 +147,7 @@ class PacketForwarder(
                     } else {
                         val packet=DatagramPacket(buffer,buffer.size)
                         try {
-                            s.receive(packet); last=System.nanoTime()
+                            s.receive(packet); last=nanoTime()
                             if(packet.socketAddress==remote && packet.length<=maxPayload && !stopped.get()) deliver(h,TransportPacket.build(TransportPacket.reverse(h),buffer.copyOf(packet.length)),epoch)
                         } catch(_: SocketTimeoutException) { }
                     }

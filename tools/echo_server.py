@@ -15,6 +15,7 @@ def echo(client):
                 client.sendall(data)
             # Explicit half-close: exercise FIN semantics through emulator NAT, not only close().
             client.shutdown(socket.SHUT_WR)
+            threading.Event().wait(0.25)  # Keep FIN-bearing host socket alive while emulator NAT drains.
         except (OSError, TimeoutError) as error:
             print(f"TCP_FIXTURE_ERROR {type(error).__name__}: {error}", flush=True)
 

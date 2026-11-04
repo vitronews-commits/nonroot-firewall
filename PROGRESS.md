@@ -477,3 +477,10 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Added 1 MiB real-socket IPv6 NIO TCP half-close coverage, and both-family UDP tests at zero/1200/MTU-limit payloads with foreign-sender rejection.
 - Transport errors now retain the original connection/protocol for filtered Logs; an asynchronous failure regression checks attribution.
 - Expected full JVM total: 158 including the unchanged 125 baseline. This is an expectation until CI XML is inspected, not a success claim.
+
+## Sleep-aware timeouts and independent-control findings — CI pending
+- Production flow/idle/RTO clocks now receive Android elapsedRealtimeNanos (includes deep sleep); JVM default stays monotonic. A simulated-suspend socket test verifies immediate stale-flow expiry after wake. Expected JVM total 159, pending CI.
+- Screen-off soak uses a bounded instrumentation-only partial wakelock and elapsed realtime. Release APK has no new wakelock permission/acquisition. This maintains test traffic generation, not a claim about idle physical-device battery.
+- Independent no-VPN API 29 Socket returned all 1 MiB then reset too (artifact diagnostic run 41817455053): TUN is not required to reproduce that EOF problem. No reset is accepted by actual TUN half-close assertions.
+- Replaced invalid multi-threaded blocking SocketChannel-adapter control (could serialize reader/writer) with single-owner NIO control. Host fixture keeps FIN-bearing descriptor briefly alive for NAT drain. Direct-control failures are printed as failures without preventing remaining diagnostics; actual TUN acceptance remains strict.
+- Clock reference: https://developer.android.com/reference/android/os/SystemClock .

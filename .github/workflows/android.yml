@@ -90,10 +90,10 @@ jobs:
             adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
             adb shell am instrument -w -e mode direct_socket com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-socket.txt
             cat /tmp/direct-socket.txt
-            grep 'status=OK' /tmp/direct-socket.txt
+            grep 'status=OK' /tmp/direct-socket.txt || echo 'CONTROL_FAIL: direct Socket, not a firewall result'
             adb shell am instrument -w -e mode direct_channel com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-channel.txt
             cat /tmp/direct-channel.txt
-            grep 'status=OK' /tmp/direct-channel.txt
+            grep 'status=OK' /tmp/direct-channel.txt || echo 'CONTROL_FAIL: direct NIO, not a firewall result'
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.loadAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest --stacktrace
             python3 tools/verify_vpn_results.py app/build/outputs/androidTest-results/connected/debug
             python3 tools/verify_load_results.py app/build/outputs/androidTest-results/connected/debug
@@ -147,10 +147,10 @@ jobs:
             adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
             adb shell am instrument -w -e mode direct_socket com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-socket.txt
             cat /tmp/direct-socket.txt
-            grep 'status=OK' /tmp/direct-socket.txt
+            grep 'status=OK' /tmp/direct-socket.txt || echo 'CONTROL_FAIL: direct Socket, not a firewall result'
             adb shell am instrument -w -e mode direct_channel com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-channel.txt
             cat /tmp/direct-channel.txt
-            grep 'status=OK' /tmp/direct-channel.txt
+            grep 'status=OK' /tmp/direct-channel.txt || echo 'CONTROL_FAIL: direct NIO, not a firewall result'
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.soakAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest -Pandroid.testInstrumentationRunnerArguments.timeout_msec=4500000 --stacktrace
             python3 tools/verify_vpn_results.py app/build/outputs/androidTest-results/connected/debug
             python3 tools/verify_load_results.py app/build/outputs/androidTest-results/connected/debug --soak

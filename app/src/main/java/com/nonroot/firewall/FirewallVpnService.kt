@@ -222,7 +222,7 @@ class FirewallVpnService : VpnService() {
                 } catch(e: android.system.ErrnoException) { if(e.errno==OsConstants.EAGAIN) false else throw e }
             },{ timeout -> Os.poll(arrayOf(writePoll),timeout); Unit },{ bytes ->
                 !stopped.get() && outboundHeader(bytes)?.let { allowed(it) }==true
-            })
+            },clock={ android.os.SystemClock.elapsedRealtime() })
             val engine=PacketForwarder(::tcp,::udp,::policyAllows,{ bytes ->
                 if(!writer.write(bytes)) throw java.io.InterruptedIOException("TUN reply revoked")
                 val h=outboundHeader(bytes)
@@ -231,7 +231,7 @@ class FirewallVpnService : VpnService() {
                 if(trafficLogs.allow(h,if(payloadReply) 3 else 1)) EngineEvents.record(h?.let { owners[it]?.connection },"REPLY ${bytes.size} bytes",h?.protocol)
             },onError={ error ->
                 EngineEvents.record(null,"Transport failure: ${error.javaClass.simpleName}: ${error.message}")
-            },pathMtu={ underlyingMtu },authorizeIo=::allowed,destination={ NetworkDestination.resolve(it,networkInterface) },
+            },nanoTime={ android.os.SystemClock.elapsedRealtimeNanos() },pathMtu={ underlyingMtu },authorizeIo=::allowed,destination={ NetworkDestination.resolve(it,networkInterface) },
                 onFlowError={ h,error -> EngineEvents.record(owners[h]?.connection,"Transport failure: ${error.javaClass.simpleName}: ${error.message}",h.protocol) })
             forwarder=engine
             EngineEvents.liveConnections={ engine.snapshot().mapNotNull { flow ->
