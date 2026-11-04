@@ -37,8 +37,24 @@ class RuleBackupInstrumentationTest {
             val broken="[{\"cidr\":\"broken\",\"decision\":\"BLOCK\"}]"
             assertTrue(prefs.edit().putString("ip_rules",broken).commit())
             try { RuleStore(context).load(strict=true); fail("Corrupt block silently ignored") } catch(_: IllegalStateException) { }
+            assertFalse(RuleStore(context).save(emptyList()))
             assertEquals(broken,prefs.getString("ip_rules",null))
         } finally { val edit=prefs.edit(); if(old==null) edit.remove("ip_rules") else edit.putString("ip_rules",old); assertTrue(edit.commit()) }
+    }
+    @Test fun corruptAppRulesCannotBeSilentlyReplacedByNormalEdit() {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext.createDeviceProtectedStorageContext()
+        val prefs=context.getSharedPreferences("firewall_rules",0)
+        val previous=prefs.getString("app_rules",null)
+        val broken="[{\"packageName\":\"\",\"decision\":\"BLOCK\"}]"
+        try {
+            assertTrue(prefs.edit().putString("app_rules",broken).commit())
+            assertFalse(AppRuleStore(context).save(emptyList()))
+            assertEquals(broken,prefs.getString("app_rules",null))
+        } finally {
+            val edit=prefs.edit()
+            if(previous==null) edit.remove("app_rules") else edit.putString("app_rules",previous)
+            assertTrue(edit.commit())
+        }
     }
     @Test fun atomicApplyAndRejectedImportPreserveExistingData() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext.createDeviceProtectedStorageContext()

@@ -512,11 +512,10 @@ class MainActivity : Activity() {
         if(requestCode !in listOf(702,703) || resultCode!=RESULT_OK) return
         val uri=data?.data ?: return
         if(uri.scheme!="content") { toast("Choose a document provider file"); return }
-        val snapshot=RuleBackup.Data(rules.toList(),appRules.toList())
         appExecutor.execute {
             try {
                 if(requestCode==702) {
-                    val bytes=RuleBackup.encode(snapshot)
+                    val bytes=RuleBackup.encode(RuleBackup.Data(store.load(strict=true),appStore.load(strict=true)))
                     checkNotNull(contentResolver.openOutputStream(uri,"wt")).use { it.write(bytes) }
                     mainHandler.post { if(!isDestroyed) toast("Rules exported") }
                 } else {

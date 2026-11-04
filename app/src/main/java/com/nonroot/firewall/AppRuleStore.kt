@@ -27,6 +27,9 @@ class AppRuleStore(context: Context, private val onRulesSaved: () -> Unit = {}) 
     }
 
     fun save(rules: List<AppRule>): Boolean {
+        // A normal edit must not silently discard malformed records omitted by a tolerant UI read.
+        // Explicit validated import uses RuleBackup.apply to replace both keys atomically.
+        try { load(strict=true) } catch(_: Exception) { return false }
         val array = JSONArray()
         rules.forEach { rule ->
             require(rule.packageName.isNotBlank())

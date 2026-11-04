@@ -496,3 +496,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Independent Socket AND NIO controls without VPN both received all 1 MiB then reset instead of EOF. This is an emulator/underlying-path compatibility failure independently of our TUN endpoint; clean EOF is still not accepted as passing.
 - Acceptance records system-DNS and client-first-half-close results separately and keeps their final assertions. Numeric 1/10/100 MiB payload tests can run on API 29 without claiming clean EOF, while a separate actual-TUN half-close test remains strict. API 29 overall acceptance still FAILs if either required capability fails.
 - The per-app DNS default-deny case is explicitly NOT_TESTED when framework identity is unavailable; this is not a passing skip. Other transport/lifecycle work continues.
+
+## Persisted-data recovery and service restart hardening — CI pending
+- Ordinary RuleStore/AppRuleStore saves now refuse to overwrite malformed current records; tolerant display loading cannot accidentally discard a corrupt block during an unrelated edit. Export reads strict validated snapshots; only explicit validated import replaces corrupt keys.
+- After protected preflight, a malformed-policy bootstrap retains a closed TUN instead of deliberately releasing routing. Added actual-TUN corruption/blocked-I/O/explicit-repair acceptance and Android storage-preservation checks.
+- Successful/duplicate START returns START_STICKY to aid OS process recovery. STOP/revoke explicitly terminate; sticky restart alone is not a lockdown guarantee. Home status distinguishes OFF after a terminal error.
+- Added a single-APK debug artifact to reduce confusion with instrumentation/probe APKs. Release remains unsigned.

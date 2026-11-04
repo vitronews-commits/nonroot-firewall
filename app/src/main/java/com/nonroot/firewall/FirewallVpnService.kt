@@ -56,7 +56,7 @@ class FirewallVpnService : VpnService() {
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if(intent?.action==STOP) { stopSelf(); return START_NOT_STICKY }
-        if(!started.compareAndSet(false,true)) return START_NOT_STICKY
+        if(!started.compareAndSet(false,true)) return START_STICKY
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel("firewall","Firewall",NotificationManager.IMPORTANCE_LOW))
         val open=PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE)
@@ -65,7 +65,7 @@ class FirewallVpnService : VpnService() {
             .setContentIntent(open).setOngoing(true).build())
         EngineEvents.status="Verifying protected transports"
         worker.execute { startTunnel() }
-        return START_NOT_STICKY
+        return START_STICKY
     }
     private fun tcp()=SocketProtection.tcp { protect(it) }.also { socket ->
         try { checkNotNull(selectedNetwork) { "No underlying network" }.bindSocket(socket) }
@@ -183,7 +183,10 @@ class FirewallVpnService : VpnService() {
             EngineSelfTest.verify({ SocketProtection.tcp { protect(it) } },{ SocketProtection.udp { protect(it) } })
             check(!stopped.get())
             EngineEvents.record(null,"Protected TCP/UDP preflight passed before TUN")
-            reload()
+            try { reload() } catch(_: Exception) {
+                // Preflight passed; preserve a closed TUN even if persisted policy is malformed.
+                // The user's explicit validated import can repair policy without releasing routes.
+            }
             while(!stopped.get()) {
                 try {
                     val descriptor=replaceTunnel() ?: break
@@ -237,7 +240,7 @@ class FirewallVpnService : VpnService() {
             EngineEvents.liveConnections={ engine.snapshot().mapNotNull { flow ->
                 owners[flow.header]?.connection?.let { c -> EngineEvents.LiveConnection(c,flow.header.protocol,flow.header.sourcePort,flow.status,flow.tunInputBytes,flow.tunOutputBytes) }
             } }
-            EngineEvents.status=if(policyReady) "RUNNING" else "WAITING — underlying network/DNS unavailable; traffic blocked"
+            EngineEvents.status=if(policyReady) "RUNNING" else if(!rulesValid) "ERROR — malformed saved rules; traffic blocked" else "WAITING — underlying network/DNS unavailable; traffic blocked"
             startForeground(1,
                 Notification.Builder(this,"firewall").setContentTitle("NonRoot Firewall")
                     .setContentText("Active — unknown connections blocked")
@@ -296,7 +299,7 @@ class FirewallVpnService : VpnService() {
         RuleChangeBus.unregister(ruleListener)
         try { connectivity.unregisterNetworkCallback(callback) } catch(_: Exception) { }
         worker.shutdownNow()
-        if(!EngineEvents.status.startsWith("ERROR")) EngineEvents.status="OFF"
+        EngineEvents.status=if(EngineEvents.status.startsWith("ERROR")) "OFF — "+EngineEvents.status else "OFF"
         super.onDestroy()
     }
 }

@@ -166,12 +166,35 @@ class VpnAcceptanceTest {
                 val restarted=probe("allow"); assertTrue(restarted.replace("\n"," | "),restarted.contains("status=OK"))
             }
             println("TUN_REPEATED_START_STOP PASS")
+            context.stopService(Intent(context,FirewallVpnService::class.java))
+            limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
+            while(EngineEvents.status!="OFF" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(50)
+            assertEquals("OFF",EngineEvents.status)
+            val corrupt="[{\"cidr\":\"invalid\",\"decision\":\"BLOCK\"}]"
+            val prefs=context.getSharedPreferences("firewall_rules",0)
+            assertTrue(prefs.edit().putString("ip_rules",corrupt).commit())
+            context.startForegroundService(Intent(context,FirewallVpnService::class.java))
+            limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
+            while(!EngineEvents.status.startsWith("ERROR") && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
+            assertTrue("Corrupt bootstrap did not close policy",EngineEvents.status.startsWith("ERROR"))
+            assertEquals(corrupt,prefs.getString("ip_rules",null))
+            assertFalse(ipStore.save(emptyList()))
+            val corruptBlocked=probe("udp_block")
+            assertTrue(corruptBlocked.replace("\n"," | "),corruptBlocked.contains("status=BLOCKED"))
+            assertTrue(RuleBackup.apply(context,RuleBackup.Data(emptyList(),listOf(AppRule(probePackage,null,Decision.ALLOW)))))
+            limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
+            while(EngineEvents.status!="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(50)
+            assertEquals("RUNNING",EngineEvents.status)
+            val repaired=probe("allow")
+            assertTrue(repaired.replace("\n"," | "),repaired.contains("status=OK"))
+            println("TUN_CORRUPT_BOOTSTRAP_AND_EXPLICIT_REPAIR PASS")
+
             assertTrue("System DNS attribution unsupported/failed: "+systemDns.replace("\n"," | ")+" "+dnsIdentityEvidence,systemDnsSupported)
             assertTrue("Clean client-first half-close failed (compare independent controls): "+halfClose.replace("\n"," | "),halfClosePassed)
         } finally {
             shell("svc wifi enable"); shell("svc data disable")
             context.stopService(Intent(context,FirewallVpnService::class.java))
-            appStore.save(savedApps); ipStore.save(savedIps)
+            assertTrue(RuleBackup.apply(context,RuleBackup.Data(savedIps,savedApps)))
             shell("appops set ${context.packageName} ACTIVATE_VPN default")
             instrumentation.runOnMainSync { activity.finish() }
         }
