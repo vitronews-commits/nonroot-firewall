@@ -8,7 +8,8 @@ import java.net.NetworkInterface
 /** Policy keeps unscoped numeric addresses; link-local socket destinations need physical scope. */
 object NetworkDestination {
     fun resolve(header: PacketParser.Header,interfaceName: String?): InetSocketAddress {
-        require(header.destination.matches(Regex("[0-9a-fA-F:.]+"))) { "Numeric destination required" }
+        val suffix=if(':' in header.destination) "/128" else "/32"
+        require(RuleEngine.isValidCidr(header.destination+suffix)) { "Numeric destination required" }
         var address=InetAddress.getByName(header.destination)
         if(address is Inet6Address && address.isLinkLocalAddress) {
             val networkInterface=interfaceName?.let { NetworkInterface.getByName(it) }

@@ -52,7 +52,7 @@ class RuleEngine(
                 } catch (_: Exception) { false }
             }
             val octets = ip.split('.')
-            if (octets.size != 4 || octets.any { it.isEmpty() || !it.all(Char::isDigit) || it.toIntOrNull() !in 0..255 }) return false
+            if (octets.size != 4 || octets.any { it.isEmpty() || !it.all { c -> c in '0'..'9' } || it.toIntOrNull() !in 0..255 }) return false
             return bits in 0..32
         }
     }
@@ -68,7 +68,7 @@ class RuleEngine(
             } else {
                 val octets = address.split('.')
                 octets.size == 4 && octets.all {
-                    it.isNotEmpty() && it.all(Char::isDigit) && it.toIntOrNull() in 0..255
+                    it.isNotEmpty() && it.all { c -> c in '0'..'9' } && it.toIntOrNull() in 0..255
                 }
             }
             if (!numeric) return false

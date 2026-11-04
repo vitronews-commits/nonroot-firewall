@@ -458,3 +458,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Add real Android system name resolution from the separate UID, not only manually constructed DNS packets. Emulator DNS uses an isolated host port-53 fixture; test requires correct A result and an attributed port-53 QUEUED event. Host UDP/TCP DNS fixtures self-check before emulator boot.
 - DPM lockdown coordinator reinstalls the firewall APK after Gradle UTP uninstalls its tested target; previous failure happened before lockdown was configured and is not a protection result.
 - Source edits continued through GitHub after local runtime became unavailable. No physical VPN activation or user-data migration.
+
+## Numeric/IP family audit and independent half-close controls — CI pending
+- Restrict IPv4 rule digits to ASCII; Unicode digit-like hostnames must not reach InetAddress/DNS lookup. Short hex-only hostnames rejected before resolution.
+- Reject mapped IPv6 wire addresses which Java normalizes to IPv4; do not silently change response IP family. Three targeted tests added, not locally executed while runtime is unavailable.
+- API 29 returned every 1 MiB byte then upstream response-read reset before EOF. Added no-VPN Socket and bound-SocketChannel controls against the same host fixture, explicit graceful linger and preserved host logs. Reset remains a failure.

@@ -17,7 +17,11 @@ class ProbeInstrumentation : Instrumentation() {
     private var completed=0L
     @Volatile private var progress=""
     private fun transfer(size: Int) {
-        Socket().use { socket ->
+        val connection=if(mode=="direct_channel") java.nio.channels.SocketChannel.open().socket().also {
+            it.bind(InetSocketAddress(0))
+            targetContext.getSystemService(android.net.ConnectivityManager::class.java).activeNetwork?.bindSocket(it)
+        } else Socket()
+        connection.use { socket ->
             socket.soTimeout=30000; socket.connect(InetSocketAddress("10.0.2.2",28080),5000)
             val error=java.util.concurrent.atomic.AtomicReference<Throwable?>()
             val writer=Thread {
@@ -117,6 +121,12 @@ class ProbeInstrumentation : Instrumentation() {
                     else -> error("Unknown control mode")
                 }
                 finish(Activity.RESULT_OK,result); return
+            }
+            if(mode in listOf("direct_socket","direct_channel")) {
+                check(android.os.Build.HARDWARE in listOf("ranchu","goldfish"))
+                stage="direct-half-close"
+                transfer(1024*1024)
+                result.putString("status","OK"); finish(Activity.RESULT_OK,result); return
             }
             val payload=ByteArray(1200) { (it*17).toByte() }
             if(mode=="stress" || mode=="soak") {

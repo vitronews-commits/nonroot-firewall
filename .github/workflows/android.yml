@@ -86,10 +86,19 @@ jobs:
             cp -R app/build/outputs/androidTest-results app/build/acceptance-reports/offline/
             gradle :probe:assembleDebug --stacktrace
             adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
+            adb shell am instrument -w -e mode direct_socket com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-socket.txt
+            grep 'status=OK' /tmp/direct-socket.txt
+            adb shell am instrument -w -e mode direct_channel com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-channel.txt
+            grep 'status=OK' /tmp/direct-channel.txt
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.loadAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest --stacktrace
             python3 tools/verify_vpn_results.py app/build/outputs/androidTest-results/connected/debug
             python3 tools/verify_load_results.py app/build/outputs/androidTest-results/connected/debug
             if [ "${{ matrix.api-level }}" = "35" ]; then python3 tools/check_lockdown.py; fi
+      - name: Preserve host and direct-control diagnostics
+        if: always()
+        run: |
+          mkdir -p app/build/acceptance-reports/host
+          cp /tmp/firewall-echo.log /tmp/direct-socket.txt /tmp/direct-channel.txt app/build/acceptance-reports/host/ 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -130,13 +139,23 @@ jobs:
           script: |
             gradle :app:connectedDebugAndroidTest :probe:assembleDebug --stacktrace
             adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
+            adb shell am instrument -w -e mode direct_socket com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-socket.txt
+            grep 'status=OK' /tmp/direct-socket.txt
+            adb shell am instrument -w -e mode direct_channel com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-channel.txt
+            grep 'status=OK' /tmp/direct-channel.txt
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.soakAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest -Pandroid.testInstrumentationRunnerArguments.timeout_msec=4500000 --stacktrace
             python3 tools/verify_vpn_results.py app/build/outputs/androidTest-results/connected/debug
             python3 tools/verify_load_results.py app/build/outputs/androidTest-results/connected/debug --soak
+      - name: Preserve soak fixture diagnostics
+        if: always()
+        run: |
+          mkdir -p app/build/acceptance-reports/host
+          cp /tmp/firewall-echo.log /tmp/direct-socket.txt /tmp/direct-channel.txt app/build/acceptance-reports/host/ 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: soak-api-35
           path: |
+            app/build/acceptance-reports/
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/

@@ -1,11 +1,13 @@
 """Loopback-only emulator acceptance fixture; no external network access."""
 import socket
 import threading
+import struct
 
 
 def echo(client):
     with client:
         client.settimeout(30)
+        client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 5))
         try:
             count = 0
             while data := client.recv(4096):
