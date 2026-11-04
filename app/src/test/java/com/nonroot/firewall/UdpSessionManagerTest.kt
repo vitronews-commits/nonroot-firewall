@@ -179,6 +179,22 @@ class UdpSessionManagerTest {
         }
     }
 
+    @Test fun failedExistingSocketCannotBeReused() {
+        val sockets = mutableListOf<DatagramSocket>()
+        UdpSessionManager({
+            DatagramSocket(null).apply {
+                bind(InetSocketAddress(0))
+                sockets.add(this)
+            }
+        }, {}, capacity = 1).use { manager ->
+            assertTrue(manager.submit(key(), request(), PacketPolicy.Result.ALLOW))
+            sockets[0].close()
+            assertFalse(manager.submit(key(), request(), PacketPolicy.Result.ALLOW))
+            assertEquals(0, manager.activeCount())
+            assertEquals(1, sockets.size)
+        }
+    }
+
     @Test fun invalidPortsCannotOpenSocket() {
         var opened = 0
         UdpSessionManager({
