@@ -536,3 +536,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Downloaded candidate 16d9448 APK matches CI SHA-256 b2e54bae18d506688db6f9b1d523232f1c04363b659a3e543a5835d4eb67328b; development candidate, not daily-use acceptance.
 
 - Lockdown harness initially failed before VPN activation because `pm path` returns nonzero for an absent package. Use exact `pm list packages` membership for the fresh-install guard; no existing data is overwritten. Verification rerun required.
+
+## 2026-11-04 — explicit VPN STOP lifecycle fix
+
+- Actual API 35 acceptance at 16d9448 failed `expected OFF but was RUNNING` after STOP. UI used stopService while descriptor closure was deferred until onDestroy.
+- A live VPN is platform-bound: now the STOP action closes transports/original TUN and interrupts the worker (which closes duplicated descriptors in finally) before stopSelf. UI and instrumentation invoke the same STOP action. Revoke and destroy share cleanup.
+- Test retains the OFF assertion and repeated real TCP/UDP reconnect; verification pending. No failure is converted into a timeout allowance or skip.

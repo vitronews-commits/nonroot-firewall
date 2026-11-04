@@ -55,7 +55,7 @@ class FirewallVpnService : VpnService() {
             .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(),callback)
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if(intent?.action==STOP) { stopSelf(); return START_NOT_STICKY }
+        if(intent?.action==STOP) { shutdownTunnel(); stopSelf(); return START_NOT_STICKY }
         if(!started.compareAndSet(false,true)) return START_STICKY
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel("firewall","Firewall",NotificationManager.IMPORTANCE_LOW))
@@ -287,12 +287,24 @@ class FirewallVpnService : VpnService() {
             try { output?.close() } catch(_: Exception) { }
         }
     }
-    override fun onRevoke() { policyReady=false; stopped.set(true); forwarder?.close(); stopSelf(); super.onRevoke() }
-    override fun onDestroy() {
+    /** The platform binds a live VPN service. Release routes before stopSelf;
+     * waiting for onDestroy alone can retain that binding and the tunnel indefinitely.
+     */
+    private fun shutdownTunnel() {
         policyReady=false
         stopped.set(true)
-        forwarder?.close(); forwarder=null
-        synchronized(this) { tun?.close(); tun=null; EngineEvents.tunnelEstablished=false }
+        if(!EngineEvents.status.startsWith("ERROR")) EngineEvents.status="STOPPING"
+        try { forwarder?.close() } catch(e: Exception) { EngineEvents.record(null,"Transport cleanup: ${e.javaClass.simpleName}") }
+        forwarder=null
+        synchronized(this) {
+            try { tun?.close() } catch(e: Exception) { EngineEvents.record(null,"TUN cleanup: ${e.javaClass.simpleName}") }
+            tun=null; EngineEvents.tunnelEstablished=false
+        }
+        worker.shutdownNow() // Wake packet loop so its duplicated descriptors close in finally.
+    }
+    override fun onRevoke() { shutdownTunnel(); stopSelf(); super.onRevoke() }
+    override fun onDestroy() {
+        shutdownTunnel()
         owners.clear()
         EngineEvents.liveConnections={ emptyList() }
         EngineEvents.network=null

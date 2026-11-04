@@ -650,7 +650,7 @@ class MainActivity : Activity() {
         } })
         box.addView(Button(this).apply {
             text = "STOP"; textSize = 28f
-            setOnClickListener { stopService(Intent(this@MainActivity, FirewallVpnService::class.java)); render() }
+            setOnClickListener { startService(Intent(this@MainActivity, FirewallVpnService::class.java).setAction(FirewallVpnService.STOP)); render() }
             setBackgroundColor(Color.rgb(211,47,47)); setTextColor(Color.WHITE)
         }, LinearLayout.LayoutParams(dp(150), dp(80)).apply { topMargin = dp(60) })
         box.addView(TextView(this).apply {

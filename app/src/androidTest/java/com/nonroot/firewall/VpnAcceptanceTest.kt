@@ -162,7 +162,7 @@ class VpnAcceptanceTest {
             val reconnect=probe("allow"); assertTrue(reconnect.replace("\n"," | "),reconnect.contains("status=OK"))
             println("TUN_RECONNECT WIFI_TCP_UDP_DNS PASS")
             repeat(2) {
-                context.stopService(Intent(context,FirewallVpnService::class.java))
+                context.startService(Intent(context,FirewallVpnService::class.java).setAction(FirewallVpnService.STOP))
                 limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
                 while(EngineEvents.status!="OFF" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(50)
                 assertEquals("OFF",EngineEvents.status); assertTrue(EngineEvents.liveConnections().isEmpty())
@@ -173,7 +173,7 @@ class VpnAcceptanceTest {
                 val restarted=probe("allow"); assertTrue(restarted.replace("\n"," | "),restarted.contains("status=OK"))
             }
             println("TUN_REPEATED_START_STOP PASS")
-            context.stopService(Intent(context,FirewallVpnService::class.java))
+            context.startService(Intent(context,FirewallVpnService::class.java).setAction(FirewallVpnService.STOP))
             limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
             while(EngineEvents.status!="OFF" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(50)
             assertEquals("OFF",EngineEvents.status)
@@ -201,7 +201,7 @@ class VpnAcceptanceTest {
             assertTrue("Clean client-first half-close failed (compare independent controls): "+halfClose.replace("\n"," | "),halfClosePassed)
         } finally {
             shell("svc wifi enable"); if(Build.VERSION.SDK_INT>=30) shell("cmd wifi connect-network AndroidWifi open"); shell("svc data disable")
-            context.stopService(Intent(context,FirewallVpnService::class.java))
+            context.startService(Intent(context,FirewallVpnService::class.java).setAction(FirewallVpnService.STOP))
             assertTrue(RuleBackup.apply(context,RuleBackup.Data(savedIps,savedApps)))
             shell("appops set ${context.packageName} ACTIVATE_VPN default")
             instrumentation.runOnMainSync { activity.finish() }
