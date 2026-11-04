@@ -74,6 +74,8 @@ class FirewallVpnService : VpnService() {
             ?: selectedNetwork?.takeIf { it in candidates } ?: candidates.firstOrNull()
         if(tun!=null) setUnderlyingNetworks(selectedNetwork?.let { arrayOf(it) })
         rules=RuleEngine(RuleStore(this).load(),AppRuleStore(this).load())
+        EngineEvents.pending.snapshot().filter { rules.decide(it.connection)!=Decision.PENDING }
+            .forEach { EngineEvents.pending.resolve(it.connection) }
     }
     private fun network(): NetworkKind {
         val caps=selectedNetwork?.let { connectivity.getNetworkCapabilities(it) }
@@ -85,7 +87,8 @@ class FirewallVpnService : VpnService() {
     }
     private fun allowed(h: PacketParser.Header): Boolean {
         val c=owners[h] ?: return false
-        return c.network==network() && rules.decide(c)==Decision.ALLOW
+        return c.network==network() && rules.decide(c)==Decision.ALLOW &&
+            resolver.resolve(h)?.unambiguousPackage==c.packageName
     }
     private fun startTunnel() {
         var input: ParcelFileDescriptor.AutoCloseInputStream?=null
@@ -131,7 +134,11 @@ class FirewallVpnService : VpnService() {
                 if(p==null) { EngineEvents.record(null,"DROP malformed/unsupported packet"); continue }
                 val h=p.header
                 val pkg=resolver.resolve(h)?.unambiguousPackage
-                if(pkg==null) { EngineEvents.record(null,"DROP unknown/shared UID"); continue }
+                if(pkg==null) {
+                    owners.remove(h)
+                    engine.accept(bytes) // Revoke a previously attributed flow, if any.
+                    EngineEvents.record(null,"DROP unknown/shared UID"); continue
+                }
                 val connection=Connection(pkg,h.destination,h.destinationPort!!,network())
                 val decision=rules.decide(connection)
                 if(decision==Decision.PENDING) EngineEvents.pending.record(connection,System.currentTimeMillis())
@@ -139,6 +146,8 @@ class FirewallVpnService : VpnService() {
                 if(decision==Decision.ALLOW) {
                     // Bound the attribution cache as well as the socket table.
                     if(owners.size>=128 && !owners.containsKey(h)) { engine.invalidate(); owners.clear() }
+                    val previous=owners[h]
+                    if(previous!=null && previous!=connection) { engine.invalidate(); owners.clear() }
                     owners[h]=connection
                 } else owners.remove(h)
                 val forwarded=engine.accept(bytes)

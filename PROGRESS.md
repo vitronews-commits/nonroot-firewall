@@ -306,3 +306,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - CI setup action failed while accepting unrelated SDK licenses before compilation (runs 41746348544/41746341066). Replaced it with the repository's previously working preinstalled-sdkmanager package-install approach.
 - CI now runs no-VPN Android tests first, then the explicitly enabled emulator TUN acceptance stage. No physical device is automatically activated.
 - Removed duplicate branch-push/PR builds to avoid spending two CI runs per update.
+
+## Android instrumentation milestone — 2026-11-04
+- Executed the three no-VPN Android instrumentation tests on a software-emulated API 29 device: 3 passed, 0 failed, 0 skipped. Verified real Android TCP/UDP packet pipeline, malformed-traffic rejection, and five-tab launch without altering stored firewall rules.
+- GitHub run 41746647739 build job passed unit/integration tests, lint, all APK builds, ZIP checks and debug signature verification. Emulator job is still running; no TUN result claimed yet.
+- Hardened return-path authorization to re-resolve Android socket ownership; cached attribution alone cannot authorize replies after a tuple is reassigned. Attribution loss revokes the existing flow, and changed owner/network invalidates old sessions.
+- Added a policy-revocation-without-event return-path test and an IPv6 TCP multi-segment integrity test. These latest additions require execution.

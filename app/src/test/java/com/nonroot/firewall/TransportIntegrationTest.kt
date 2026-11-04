@@ -89,5 +89,51 @@ class TransportIntegrationTest {
             }
         }
     }
+    @Test fun permissionRevocationDropsReplyWithoutAnInvalidationEvent() {
+        val permitted=java.util.concurrent.atomic.AtomicBoolean(true)
+        val replies=LinkedBlockingQueue<ByteArray>()
+        DatagramSocket(0,InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout=3000
+            PacketForwarder({ Socket() },{ DatagramSocket(null) },{ permitted.get() },{ replies.offer(it) }).use { engine ->
+                val h=header().copy(destinationPort=server.localPort)
+                assertTrue(engine.accept(TransportPacket.build(h,byteArrayOf(1))))
+                val request=DatagramPacket(ByteArray(16),16); server.receive(request)
+                permitted.set(false)
+                server.send(DatagramPacket(byteArrayOf(2),1,request.socketAddress))
+                assertNull(replies.poll(250,TimeUnit.MILLISECONDS))
+                val deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(1)
+                while(engine.activeCount()>0 && System.nanoTime()<deadline) Thread.sleep(10)
+                assertEquals(0,engine.activeCount())
+            }
+        }
+    }
+    @Test fun ipv6TcpPreservesMultiSegmentResponseBytes() {
+        val queue=LinkedBlockingQueue<ByteArray>()
+        java.net.ServerSocket(0,1,InetAddress.getByName("::1")).use { server ->
+            server.soTimeout=3000
+            PacketForwarder({ Socket() },{ DatagramSocket(null) },{ true },{ queue.offer(it) }).use { engine ->
+                val h=header(6,true).copy(destinationPort=server.localPort)
+                assertTrue(engine.accept(TransportPacket.build(h,byteArrayOf(),100,0,2)))
+                server.accept().use { peer ->
+                    val syn=TransportPacket.parse(queue.poll(3,TimeUnit.SECONDS)!!)!!
+                    var expected=TcpProxySession.add(syn.sequence,1)
+                    assertTrue(engine.accept(TransportPacket.build(h,byteArrayOf(),101,expected,16)))
+                    val data=ByteArray(4096) { (it*37).toByte() }
+                    peer.getOutputStream().write(data)
+                    val received=java.io.ByteArrayOutputStream()
+                    while(received.size()<data.size) {
+                        val reply=TransportPacket.parse(queue.poll(3,TimeUnit.SECONDS)!!)!!
+                        assertEquals(TransportPacket.reverse(h),reply.header)
+                        assertEquals(expected,reply.sequence)
+                        assertTrue(reply.payload.isNotEmpty())
+                        received.write(reply.payload)
+                        expected=TcpProxySession.add(expected,reply.payload.size)
+                        assertTrue(engine.accept(TransportPacket.build(h,byteArrayOf(),101,expected,16)))
+                    }
+                    assertArrayEquals(data,received.toByteArray())
+                }
+            }
+        }
+    }
     @Test fun sequenceArithmeticWraps() { assertEquals(0L,TcpProxySession.add(0xffffffffL,1)) }
 }
