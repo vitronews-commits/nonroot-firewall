@@ -12,7 +12,28 @@ import java.net.SocketTimeoutException
 /** Separate UID is essential: a VPN's own UID does not prove packet interception. */
 class ProbeInstrumentation : Instrumentation() {
     private var mode="allow"
-    override fun onCreate(arguments: Bundle?) { mode=arguments?.getString("mode") ?: "allow"; start() }
+    private var durationSeconds=0
+    private var completed=0L
+    private fun transfer(size: Int) {
+        Socket().use { socket ->
+            socket.soTimeout=30000; socket.connect(InetSocketAddress("10.0.2.2",28080),5000)
+            val error=java.util.concurrent.atomic.AtomicReference<Throwable?>()
+            val writer=Thread {
+                try {
+                    val chunk=ByteArray(16384); var offset=0
+                    while(offset<size) { val count=minOf(chunk.size,size-offset); for(i in 0 until count) chunk[i]=((offset+i)*37).toByte(); socket.getOutputStream().write(chunk,0,count); offset+=count }
+                    socket.shutdownOutput()
+                } catch(t: Throwable) { error.set(t) }
+            }.apply { start() }
+            try {
+                val chunk=ByteArray(16384); var offset=0
+                while(offset<size) { val count=socket.getInputStream().read(chunk,0,minOf(chunk.size,size-offset)); check(count>0) { "Early EOF $offset/$size" }; for(i in 0 until count) check(chunk[i]==((offset+i)*37).toByte()) { "Corruption at ${offset+i}" }; offset+=count }
+                check(socket.getInputStream().read()==-1) { "Missing half-close EOF" }
+                writer.join(30000); check(!writer.isAlive); error.get()?.let { throw IllegalStateException("Upload failed",it) }
+            } finally { socket.close(); writer.join(2000) }
+        }
+    }
+    override fun onCreate(arguments: Bundle?) { mode=arguments?.getString("mode") ?: "allow"; durationSeconds=arguments?.getString("durationSeconds")?.toIntOrNull()?.coerceIn(0,3660) ?: 0; start() }
     private fun permissionDenied(error: Throwable): Boolean {
         var cause: Throwable?=error
         while(cause!=null) {
@@ -28,6 +49,31 @@ class ProbeInstrumentation : Instrumentation() {
         var received=0
         try {
             val payload="separate-UID-through-TUN".toByteArray()
+            if(mode=="stress" || mode=="soak") {
+                val started=System.nanoTime()
+                val cpu=android.os.Process.getElapsedCpuTime()
+                val pssBefore=android.os.Debug.getPss()
+                if(mode=="stress") {
+                    for(size in listOf(1,10,100)) {
+                        stage="${size}MiB"; val begin=System.nanoTime(); transfer(size*1024*1024); completed+=size.toLong()*1024*1024
+                        sendStatus(0,Bundle().apply { putString("measurement","$stage bytes=${size*1024*1024} elapsedMs=${(System.nanoTime()-begin)/1000000}") })
+                    }
+                    stage="concurrent"; val errors=java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
+                    val threads=(1..4).map { Thread { try { transfer(1024*1024) } catch(t: Throwable) { errors.add(t) } }.apply { start() } }
+                    threads.forEach { it.join(120000); check(!it.isAlive) }; check(errors.isEmpty()) { errors.toString() }; completed+=4*1024*1024
+                } else {
+                    check(durationSeconds>=3600) { "Soak requires at least 60 minutes" }
+                    val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(durationSeconds.toLong())
+                    while(System.nanoTime()<deadline) {
+                        stage="soak-transfer"; transfer(65536); completed+=65536
+                        DatagramSocket().use { udp -> udp.soTimeout=5000; udp.connect(InetSocketAddress("10.0.2.2",28081)); udp.send(DatagramPacket(payload,payload.size)); val answer=DatagramPacket(ByteArray(128),128); udp.receive(answer); check(answer.data.copyOf(answer.length).contentEquals(payload)) }
+                        Thread.sleep(5000)
+                    }
+                }
+                result.putString("status","OK")
+                result.putString("metrics","mode=$mode bytes=$completed elapsedMs=${(System.nanoTime()-started)/1000000} cpuMs=${android.os.Process.getElapsedCpuTime()-cpu} pssBeforeKiB=$pssBefore pssAfterKiB=${android.os.Debug.getPss()}")
+                finish(Activity.RESULT_OK,result); return
+            }
             val tcpPayload=if(mode=="allow") ByteArray(65536) { (it*37).toByte() } else payload
             if(mode=="allow" || mode=="tcp_hold") {
                 Socket().use { tcp ->

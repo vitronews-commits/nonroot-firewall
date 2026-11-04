@@ -28,7 +28,9 @@ class FirewallVpnService : VpnService() {
     private var tun: ParcelFileDescriptor?=null
     @Volatile private var forwarder: PacketForwarder?=null
     @Volatile private var rules=RuleEngine()
-    private val owners=ConcurrentHashMap<PacketParser.Header,Connection>()
+    private data class Attribution(val uid: Int,val connection: Connection)
+    @Volatile private var policyReady=false
+    private val owners=ConcurrentHashMap<PacketParser.Header,Attribution>()
     private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
     private val resolver by lazy { ConnectionOwnerResolver(this) }
     private val ruleListener: ()->Unit={ reload() }
@@ -64,10 +66,12 @@ class FirewallVpnService : VpnService() {
         catch(e: Exception) { socket.close(); throw e }
     }
     @Synchronized private fun reload() {
+        policyReady=false
+        rules=RuleEngine(RuleStore(this).load(),AppRuleStore(this).load())
         forwarder?.invalidate()
         owners.clear()
         updateNetwork()
-        rules=RuleEngine(RuleStore(this).load(),AppRuleStore(this).load())
+        policyReady=true
         EngineEvents.pending.snapshot().filter { rules.decide(it.connection)!=Decision.PENDING }
             .forEach { EngineEvents.pending.resolve(it.connection) }
     }
@@ -90,7 +94,7 @@ class FirewallVpnService : VpnService() {
         owners.clear()
         selectedNetwork=next
         classifiedKind=kind
-        if(tun!=null) setUnderlyingNetworks(next?.let { arrayOf(it) })
+        if(tun!=null) setUnderlyingNetworks(next?.let { arrayOf(it) } ?: emptyArray())
     }
     private fun classify(network: Network?): NetworkKind {
         val caps=network?.let { connectivity.getNetworkCapabilities(it) }
@@ -102,9 +106,12 @@ class FirewallVpnService : VpnService() {
     }
     private fun network()=classify(selectedNetwork)
     private fun allowed(h: PacketParser.Header): Boolean {
-        val c=owners[h] ?: return false
+        if(!policyReady || stopped.get() || selectedNetwork==null) return false
+        val owner=owners[h] ?: return false
+        val c=owner.connection
+        val current=resolver.resolve(h) ?: return false
         return c.network==network() && rules.decide(c)==Decision.ALLOW &&
-            resolver.resolve(h)?.unambiguousPackage==c.packageName
+            current.uid==owner.uid && current.unambiguousPackage==c.packageName
     }
     private fun startTunnel() {
         var input: ParcelFileDescriptor.AutoCloseInputStream?=null
@@ -119,7 +126,7 @@ class FirewallVpnService : VpnService() {
                 .addAddress("10.23.0.1",32).addAddress("fd23:23::1",128)
                 .addRoute("0.0.0.0",0).addRoute("::",0)
                 .addDnsServer("1.1.1.1").addDnsServer("2606:4700:4700::1111")
-                .setUnderlyingNetworks(selectedNetwork?.let { arrayOf(it) }).setBlocking(false).establish() ?: error("TUN creation rejected")
+                .setUnderlyingNetworks(selectedNetwork?.let { arrayOf(it) } ?: emptyArray()).setBlocking(false).establish() ?: error("TUN creation rejected")
             synchronized(this) {
                 if(stopped.get()) { descriptor.close(); return }
                 tun=descriptor
@@ -135,7 +142,7 @@ class FirewallVpnService : VpnService() {
                     if(!stopped.get()) {
                         out.write(bytes)
                         val h=PacketParser.parse(bytes)?.let { TransportPacket.reverse(it) }
-                        EngineEvents.record(h?.let { owners[it] },"REPLY ${bytes.size} bytes")
+                        EngineEvents.record(h?.let { owners[it]?.connection },"REPLY ${bytes.size} bytes")
                     }
                 }
             },onError={ error ->
@@ -157,7 +164,8 @@ class FirewallVpnService : VpnService() {
                 val p=TransportPacket.parse(bytes)
                 if(p==null) { EngineEvents.record(null,"DROP malformed/unsupported packet"); continue }
                 val h=p.header
-                val pkg=resolver.resolve(h)?.unambiguousPackage
+                val owner=resolver.resolve(h)
+                val pkg=owner?.unambiguousPackage
                 if(pkg==null) {
                     owners.remove(h)
                     engine.accept(bytes) // Revoke a previously attributed flow, if any.
@@ -174,8 +182,8 @@ class FirewallVpnService : VpnService() {
                         owners.keys.retainAll(engine.activeHeaders())
                     }
                     val previous=owners[h]
-                    if(previous!=null && previous!=connection) { engine.invalidate(); owners.clear() }
-                    owners[h]=connection
+                    if(previous!=null && previous!=Attribution(owner!!.uid,connection)) { engine.invalidate(); owners.clear() }
+                    owners[h]=Attribution(owner!!.uid,connection)
                 } else owners.remove(h)
                 val forwarded=engine.accept(bytes)
                 EngineEvents.record(connection,if(forwarded) "QUEUED" else if(decision==Decision.ALLOW) "DROP transport capacity/state" else decision.name+" / dropped")
@@ -193,6 +201,7 @@ class FirewallVpnService : VpnService() {
     }
     override fun onRevoke() { stopSelf(); super.onRevoke() }
     override fun onDestroy() {
+        policyReady=false
         stopped.set(true)
         forwarder?.close(); forwarder=null
         synchronized(this) { tun?.close(); tun=null }

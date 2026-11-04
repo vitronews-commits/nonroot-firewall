@@ -11,6 +11,7 @@ class PackageChangeReceiver : BroadcastReceiver() {
         val action = intent.action ?: return
         if (action == Intent.ACTION_PACKAGE_REMOVED && intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return
         val removed = action == Intent.ACTION_PACKAGE_REMOVED || action == Intent.ACTION_PACKAGE_FULLY_REMOVED
+        RuleChangeBus.notifySaved() // Revoke attribution across package replacement/removal/UID reuse.
         val pending = goAsync()
         val appContext = context.applicationContext
         Thread {

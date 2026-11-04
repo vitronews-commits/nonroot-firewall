@@ -49,7 +49,7 @@ class VpnAcceptanceTest {
             assertTrue(appStore.save(listOf(AppRule(probePackage,null,Decision.ALLOW))))
             fun probe(mode: String, onReady: ()->Unit = {}): String {
                 val descriptor=instrumentation.uiAutomation.executeShellCommand(
-                    "am instrument -w -e mode $mode $probePackage/.ProbeInstrumentation")
+                    "am instrument -w -e mode $mode -e durationSeconds 3600 $probePackage/.ProbeInstrumentation")
                 val output=StringBuilder()
                 android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { reader ->
                     while(true) {
@@ -73,6 +73,19 @@ class VpnAcceptanceTest {
                     it.result.startsWith("REPLY ") &&
                     (it.result.removePrefix("REPLY ").substringBefore(' ').toIntOrNull() ?: 0)>64
             })
+            if(InstrumentationRegistry.getArguments().getString("loadAcceptance")=="true") {
+                val cpu=android.os.Process.getElapsedCpuTime(); val memory=android.os.Debug.getPss()
+                val stress=probe("stress")
+                assertTrue(stress.replace("\n"," | "),stress.contains("status=OK"))
+                println("TUN_STRESS "+stress.replace("\n"," | ")+" engineCpuMs=${android.os.Process.getElapsedCpuTime()-cpu} enginePssBeforeKiB=$memory enginePssAfterKiB=${android.os.Debug.getPss()}")
+            }
+            if(InstrumentationRegistry.getArguments().getString("soakAcceptance")=="true") {
+                val begin=System.nanoTime(); val cpu=android.os.Process.getElapsedCpuTime(); val memory=android.os.Debug.getPss()
+                val soak=probe("soak")
+                assertTrue(soak.replace("\n"," | "),soak.contains("status=OK"))
+                assertTrue(java.util.concurrent.TimeUnit.NANOSECONDS.toMinutes(System.nanoTime()-begin)>=60)
+                println("TUN_SOAK "+soak.replace("\n"," | ")+" engineCpuMs=${android.os.Process.getElapsedCpuTime()-cpu} enginePssBeforeKiB=$memory enginePssAfterKiB=${android.os.Debug.getPss()}")
+            }
             var sawReady=false
             val revoked=probe("tcp_hold") {
                 sawReady=true

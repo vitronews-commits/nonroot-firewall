@@ -3,17 +3,17 @@ package com.nonroot.firewall
 import java.io.Closeable
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.net.SocketTimeoutException
+import java.nio.ByteBuffer
+import java.nio.channels.SelectionKey
+import java.nio.channels.Selector
 import java.security.SecureRandom
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Bounded stop-and-wait TCP endpoint. No window scaling/SACK negotiation.
- * Out-of-order segments are ACKed and discarded for peer retransmission.
- * One worker owns all TCP state and upstream I/O; queue never blocks TUN.
- * Experimental until Android end-to-end validation passes.
+/** Bounded TCP endpoint. No window scaling/SACK negotiation; reordering is recovered by retransmission.
+ * One state owner, 32 KiB upload buffer, at most 64 KiB unacknowledged response, selector wakeups.
+ * Production socket factory supplies a protected SocketChannel; plain sockets support the baseline harness.
  */
 class TcpProxySession(
     private val initial: TransportPacket.Packet,
@@ -27,117 +27,187 @@ class TcpProxySession(
     companion object {
         const val FIN=1; const val SYN=2; const val RST=4; const val PSH=8; const val ACK=16
         const val MASK=0xffffffffL
+        private const val RECEIVE_WINDOW=32768
         fun add(sequence: Long, amount: Int)=(sequence+amount) and MASK
+        private fun distance(from: Long,to: Long)=(to-from) and MASK
     }
+    private data class Sent(val sequence: Long,val end: Long,val bytes: ByteArray,var at: Long,var retries: Int=0)
     private val closed=AtomicBoolean(false)
-    private val incoming=ArrayBlockingQueue<TransportPacket.Packet>(32)
+    private val incoming=ArrayBlockingQueue<TransportPacket.Packet>(256)
     @Volatile private var socket: Socket?=null
+    @Volatile private var selector: Selector?=null
     private var clientNext=add(initial.sequence,1)
     private var serverNext=initialSequence
     private var serverAcknowledged=initialSequence
     private var established=false
     private var clientFin=false
+    private var outputShutdown=false
     private var remoteFin=false
     private var peerWindow=initial.window
     private var lastActivity=System.nanoTime()
-    private var outstanding: ByteArray?=null
-    private var outstandingEnd=0L
-    private var sentAt=0L
-    private var retries=0
+    private val sent=ArrayDeque<Sent>()
+    private val upload=ByteBuffer.allocate(RECEIVE_WINDOW)
+    private var windowSequence=initial.sequence
+    private var windowAck=initialSequence
+    private var duplicateAcks=0
+    private var lastProbe=0L
+    private var lastDataByte: Byte?=null
     private val reverse=TransportPacket.reverse(initial.header)
     private val receiveMss=if(':' in initial.header.source) 1440 else 1460
     private val sendMss=minOf(initial.maximumSegmentSize ?: if(':' in initial.header.source) 1220 else 536,receiveMss)
-
-    init { require(initial.flags and 0x3f==SYN && initial.payload.isEmpty()); require(idleMs>=1000); require(initial.maximumSegmentSize==null || initial.maximumSegmentSize in 1..65535) }
-    fun offer(packet: TransportPacket.Packet): Boolean = !closed.get() && incoming.offer(packet)
+    init {
+        require(initial.flags and 0x3f==SYN && initial.payload.isEmpty())
+        require(idleMs>=1000)
+        require(initial.maximumSegmentSize==null || initial.maximumSegmentSize in 1..65535)
+    }
+    fun offer(packet: TransportPacket.Packet): Boolean {
+        if(closed.get() || !incoming.offer(packet)) return false
+        selector?.wakeup()
+        return true
+    }
     fun isClosed()=closed.get()
     private fun now()=System.nanoTime()/1_000_000
-    private fun emit(payload: ByteArray=byteArrayOf(), flags: Int=ACK, tracked: Boolean=false) {
+    private fun emit(payload: ByteArray=byteArrayOf(),flags: Int=ACK,tracked: Boolean=false) {
         if(closed.get() || !permitted()) return
-        val bytes=TransportPacket.build(reverse,payload,serverNext,clientNext,flags,
+        val sequence=serverNext
+        val bytes=TransportPacket.build(reverse,payload,sequence,clientNext,flags,upload.remaining(),
             maximumSegmentSize=if(flags and SYN!=0) receiveMss else null)
         if(tracked) {
             serverNext=add(serverNext,payload.size+if(flags and (SYN or FIN)!=0) 1 else 0)
-            outstanding=bytes; outstandingEnd=serverNext; sentAt=now(); retries=0
+            sent.addLast(Sent(sequence,serverNext,bytes,now()))
+            if(payload.isNotEmpty()) lastDataByte=payload.last()
         }
         reply(bytes)
     }
     fun run() {
         try {
             if(closed.get() || !permitted()) return
-            val upstream=socketFactory()
-            socket=upstream
+            val upstream=socketFactory(); socket=upstream
             if(closed.get() || !permitted()) { upstream.close(); return }
             upstream.tcpNoDelay=true
-            upstream.sendBufferSize=16384
             upstream.connect(InetSocketAddress(initial.header.destination,initial.header.destinationPort!!),5000)
-            upstream.soTimeout=50
+            val channel=upstream.channel
+            val key=if(channel!=null) {
+                val selected=Selector.open(); selector=selected
+                channel.configureBlocking(false); channel.register(selected,0)
+            } else null
             emit(flags=SYN or ACK,tracked=true)
             val buffer=ByteArray(sendMss)
             while(!closed.get() && permitted()) {
                 if((System.nanoTime()-lastActivity)/1_000_000>=idleMs) break
                 repeat(32) { incoming.poll()?.let { process(it,upstream) } }
                 if(closed.get()) break
-                if(outstanding!=null) {
-                    if(now()-sentAt>=1000L shl retries.coerceAtMost(3)) {
-                        if(++retries>5) break
-                        if(permitted()) reply(outstanding!!)
-                        sentAt=now()
+                if(upload.position()>0) {
+                    val previousFree=upload.remaining()
+                    upload.flip()
+                    if(channel!=null) channel.write(upload)
+                    else { val b=ByteArray(upload.remaining()); upload.get(b); upstream.getOutputStream().write(b) }
+                    upload.compact()
+                    // Reopen a closed/small receive window without waiting for another upload.
+                    if(upload.remaining()>previousFree && (previousFree<receiveMss || upload.remaining()-previousFree>=receiveMss)) emit()
+                }
+                if(clientFin && !outputShutdown && upload.position()==0) { upstream.shutdownOutput(); outputShutdown=true }
+                var progressed=false
+                if(established && !remoteFin) {
+                    var budget=64
+                    while(budget-->0) {
+                        val available=(peerWindow-distance(serverAcknowledged,serverNext)).coerceAtMost(65535).toInt()
+                        if(remoteFin || available<=0 || sent.size>=128 || !permitted() || closed.get()) break
+                        val count=if(channel!=null) channel.read(ByteBuffer.wrap(buffer,0,minOf(buffer.size,available)))
+                            else if(upstream.getInputStream().available()>0) upstream.getInputStream().read(buffer,0,minOf(buffer.size,available)) else 0
+                        if(count<0) { remoteFin=true; emit(flags=FIN or ACK,tracked=true); break }
+                        if(count>0) { lastActivity=System.nanoTime(); emit(buffer.copyOf(count),ACK or PSH,true); progressed=true }
+                        else break
                     }
-                    // Wake immediately for an ACK, otherwise sleep until the next timer check.
-                    // A busy loop here burns CPU and floods Android UID lookups.
-                    incoming.poll(50,TimeUnit.MILLISECONDS)?.let { process(it,upstream) }
-                } else if(established && !remoteFin && peerWindow>0) {
-                    val count=try { upstream.getInputStream().read(buffer,0,minOf(buffer.size,peerWindow)) }
-                        catch(_: SocketTimeoutException) { 0 }
-                    if(count<0) { remoteFin=true; emit(flags=FIN or ACK,tracked=true) }
-                    else if(count>0) { lastActivity=System.nanoTime(); emit(buffer.copyOf(count),ACK or PSH,true) }
-                } else Thread.sleep(10)
-                if(clientFin && remoteFin && outstanding==null) break
+                    // Plain-socket harness needs EOF detection; production uses selector/channel EOF.
+                    if(channel==null && !progressed && sent.isEmpty() && peerWindow>0) {
+                        upstream.soTimeout=10
+                        try {
+                            val count=upstream.getInputStream().read(buffer,0,minOf(buffer.size,peerWindow))
+                            if(count<0) { remoteFin=true; emit(flags=FIN or ACK,tracked=true) }
+                            else if(count>0) { lastActivity=System.nanoTime(); emit(buffer.copyOf(count),ACK or PSH,true); progressed=true }
+                        } catch(_: java.net.SocketTimeoutException) { }
+                    }
+                }
+                val oldest=sent.firstOrNull()
+                if(oldest!=null && now()-oldest.at >= (1000L shl oldest.retries.coerceAtMost(3))) {
+                    if(++oldest.retries>5) break
+                    if(permitted() && !closed.get()) reply(oldest.bytes)
+                    oldest.at=now()
+                }
+                if(established && peerWindow==0 && now()-lastProbe>=1000) {
+                    lastProbe=now()
+                    if(permitted()) reply(TransportPacket.build(reverse,lastDataByte?.let { byteArrayOf(it) } ?: byteArrayOf(),
+                        add(serverNext,-1),clientNext,ACK,upload.remaining()))
+                }
+                if(clientFin && remoteFin && sent.isEmpty()) break
+                if(incoming.isNotEmpty() || progressed) continue
+                if(key!=null) {
+                    var ops=0
+                    if(established && !remoteFin && peerWindow>distance(serverAcknowledged,serverNext) && sent.size<128) ops=ops or SelectionKey.OP_READ
+                    if(upload.position()>0) ops=ops or SelectionKey.OP_WRITE
+                    key.interestOps(ops)
+                    selector!!.select(if(peerWindow==0 || sent.isNotEmpty()) 100 else 1000)
+                    selector!!.selectedKeys().clear()
+                } else incoming.poll(20,TimeUnit.MILLISECONDS)?.let { process(it,upstream) }
             }
         } catch(e: Exception) {
             if(!closed.get()) onError(e)
             try { emit(flags=RST or ACK) } catch(_: Exception) { }
-        } finally { close() }
+        } finally { close(); try { selector?.close() } catch(_: Exception) { } }
     }
-    private fun process(p: TransportPacket.Packet, upstream: Socket) {
+    private fun process(p: TransportPacket.Packet,upstream: Socket) {
         if(!permitted() || closed.get()) return
-        if(p.flags and RST!=0) { close(); return }
+        if(p.flags and RST!=0) {
+            if(p.sequence==clientNext) close()
+            else if(distance(clientNext,p.sequence)<RECEIVE_WINDOW) emit()
+            return
+        }
         if(p.flags and SYN!=0) {
-            if(p.sequence==initial.sequence && outstanding!=null && !established) reply(outstanding!!)
+            if(p.sequence==initial.sequence && !established) sent.firstOrNull()?.let { reply(it.bytes) }
             return
         }
         if(p.flags and ACK==0) return
-        // ACK progress is independent of whether this segment's upload bytes are next.
-        // A client may have sent upload data while its ACK crosses our response.
-        val sequenceDistance=(p.sequence-clientNext) and MASK
-        if(sequenceDistance>=16384L) { emit(); return }
-        val beyondSent=(p.acknowledgement-serverNext) and MASK
+        // ACK processing and ordered upload consumption are independent.
+        val seqDistance=distance(clientNext,p.sequence)
+        if(seqDistance>=RECEIVE_WINDOW) { emit(); return }
+        val beyondSent=distance(serverNext,p.acknowledgement)
         if(beyondSent in 1L..0x7fffffffL) { emit(); return }
         if(!established && (p.sequence!=clientNext || p.acknowledgement!=serverNext)) { emit(); return }
-        val acknowledgedDistance=(p.acknowledgement-serverAcknowledged) and MASK
-        val inFlight=(serverNext-serverAcknowledged) and MASK
-        if(acknowledgedDistance<=inFlight) {
+        val acknowledged=distance(serverAcknowledged,p.acknowledgement)
+        if(acknowledged<=distance(serverAcknowledged,serverNext)) {
+            val advanced=acknowledged>0
             serverAcknowledged=p.acknowledgement
-            peerWindow=p.window
-            if(outstanding!=null && p.acknowledgement==outstandingEnd) outstanding=null
+            while(sent.isNotEmpty() && distance(sent.first().end,p.acknowledgement)<0x80000000L) sent.removeFirst()
+            // RFC window update ordering: stale ACKs cannot shrink/reopen a newer window.
+            if(distance(windowSequence,p.sequence)<0x80000000L &&
+                (p.sequence!=windowSequence || distance(windowAck,p.acknowledgement)<0x80000000L)) {
+                peerWindow=p.window; windowSequence=p.sequence; windowAck=p.acknowledgement
+            }
+            if(advanced) duplicateAcks=0
+            else if(p.payload.isEmpty() && sent.isNotEmpty() && ++duplicateAcks==3) {
+                val first=sent.first(); if(permitted()) reply(first.bytes); first.at=now()
+            }
         }
-        established=true
-        lastActivity=System.nanoTime()
-        // Future upload data remains unconsumed; duplicates are never written twice.
+        established=true; lastActivity=System.nanoTime()
         if(p.sequence!=clientNext) { emit(); return }
         if(p.payload.isNotEmpty()) {
-            if(clientFin) { emit(); return }
-            upstream.getOutputStream().write(p.payload)
-            clientNext=add(clientNext,p.payload.size)
+            if(clientFin || p.payload.size>upload.remaining()) { emit(); return }
+            upload.put(p.payload); clientNext=add(clientNext,p.payload.size)
+            // Legacy sockets write immediately to preserve the synchronous harness contract.
+            if(upstream.channel==null) { upload.flip(); val b=ByteArray(upload.remaining()); upload.get(b); upstream.getOutputStream().write(b); upload.clear() }
             emit()
         }
         if(p.flags and FIN!=0 && !clientFin) {
             clientFin=true; clientNext=add(clientNext,1)
-            upstream.shutdownOutput(); emit()
+            if(upload.position()==0) { upstream.shutdownOutput(); outputShutdown=true }
+            emit()
         }
     }
     override fun close() {
-        if(closed.compareAndSet(false,true)) { socket?.close(); incoming.clear() }
+        if(closed.compareAndSet(false,true)) {
+            selector?.wakeup()
+            try { socket?.close() } finally { try { selector?.close() } finally { incoming.clear() } }
+        }
     }
 }

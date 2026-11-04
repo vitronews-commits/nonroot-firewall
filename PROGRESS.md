@@ -401,3 +401,13 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 ## 0.2.1 final verification — 2026-11-04
 - Supersedes pending CI notes above: run 41801468947 passed build and both Android jobs; 125 JVM tests verified directly from XML. Both Android logs contain the explicit executed/not-skipped TUN success marker.
 - Standalone installable debug APK extracted from that run and SHA-256 checked; release remains unsigned.
+
+## Daily-use audit milestone — 2026-11-04 (in progress)
+- Separate branch development/daily-use starts from verified 0.2.1-dev.
+- ARCHITECTURE_AUDIT.md records security/lifecycle findings and Kotlin vs native stack tradeoffs. Targeted bounded-window/NIO upgrade chosen; no replacement of the verified UID/rule/protection boundary.
+- No physical-device VPN activation; no settings/data migration performed. New code remains unverified until regression/actual-TUN CI runs.
+
+## Bounded sliding-window and lifecycle implementation — verification pending
+- Protected SocketChannel upstream, selector wakeups, 32 KiB upload buffer, <=64 KiB downstream in flight with <=128 retransmission records, 256-packet bounded input queue. Cumulative ACK removal, retransmission backoff, half-close and zero-window probes added; RST sequence validated. Plain socket path retained for baseline tests only.
+- Rule reload closes explicit policy gate; numeric UID retained and rechecked; package changes invalidate transports. No-network declaration uses empty network array and gate rejects missing underlying path.
+- Added separate-UID 1/10/100 MiB and four concurrent TCP transfers with byte integrity/half-close checks and elapsed/CPU/PSS metrics. Dedicated API 35 60-minute TCP/UDP TUN soak workflow added; not yet executed.

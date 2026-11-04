@@ -7,7 +7,7 @@ import java.net.InetSocketAddress
 /** Protection must succeed before connect/send. A local TCP bind creates Android's lazy native descriptor without transmitting traffic. */
 object SocketProtection {
     fun tcp(protect: (Socket)->Boolean): Socket {
-        val s=Socket()
+        val s=java.nio.channels.SocketChannel.open().socket()
         try {
             // Android Socket() does not allocate a native FD until bind/connect.
             // Protecting an uncreated FD fails; local bind must precede protect.
