@@ -18,7 +18,12 @@ class VpnAcceptanceTest {
     @Test fun tunTcpUdpAttributionAndRuleRevocation() {
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         assumeTrue(InstrumentationRegistry.getArguments().getString("vpnAcceptance")=="true")
-        assumeTrue(Build.FINGERPRINT.contains("generic") || Build.MODEL.contains("sdk"))
+        check(Build.FINGERPRINT.contains("generic", ignoreCase=true) ||
+            Build.MODEL.contains("sdk", ignoreCase=true) ||
+            Build.MODEL.contains("emulator", ignoreCase=true) ||
+            Build.HARDWARE in listOf("ranchu","goldfish")) {
+            "Explicit VPN acceptance requires emulator: model=${Build.MODEL}, hardware=${Build.HARDWARE}"
+        }
         // Packet forwarding/return path is verified before permission or TUN activation.
         EngineSelfTest.verify({ Socket() },{ DatagramSocket(null) })
         val context=instrumentation.targetContext
