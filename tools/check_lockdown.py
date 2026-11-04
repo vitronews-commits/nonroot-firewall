@@ -15,7 +15,10 @@ FIREWALL = "com.nonroot.firewall"
 
 
 def adb(*args, timeout=30):
-    return subprocess.run(["adb", *args], check=True, text=True, capture_output=True, timeout=timeout).stdout.strip()
+    result = subprocess.run(["adb", *args], text=True, capture_output=True, timeout=timeout)
+    if result.returncode:
+        raise RuntimeError(f"adb {' '.join(args)}: {result.stdout} {result.stderr}")
+    return result.stdout.strip()
 
 
 def probe(mode):
@@ -41,6 +44,7 @@ root_result = adb("root")
 if "cannot run as root" in root_result:
     raise SystemExit("Rootable emulator required to inject process death, test not executed")
 adb("wait-for-device")
+adb("install", "-r", "app/build/outputs/apk/debug/app-debug.apk")  # UTP removes the tested target APK.
 owner = False
 process = None
 try:

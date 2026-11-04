@@ -70,18 +70,22 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Start isolated host DNS and transport fixtures
+        run: |
+          sudo python3 -u tools/echo_server.py > /tmp/firewall-echo.log 2>&1 &
+          python3 tools/test_echo_fixtures.py
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -dns-server 127.0.0.1
           script: |
             gradle :app:connectedDebugAndroidTest --stacktrace
             mkdir -p app/build/acceptance-reports/offline
             cp -R app/build/outputs/androidTest-results app/build/acceptance-reports/offline/
             gradle :probe:assembleDebug --stacktrace
             adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
-            python3 tools/echo_server.py > /tmp/firewall-echo.log 2>&1 &
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.loadAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest --stacktrace
             python3 tools/verify_vpn_results.py app/build/outputs/androidTest-results/connected/debug
             python3 tools/verify_load_results.py app/build/outputs/androidTest-results/connected/debug
@@ -113,15 +117,19 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Start isolated host DNS and transport fixtures
+        run: |
+          sudo python3 -u tools/echo_server.py > /tmp/firewall-echo.log 2>&1 &
+          python3 tools/test_echo_fixtures.py
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -dns-server 127.0.0.1
           script: |
             gradle :app:connectedDebugAndroidTest :probe:assembleDebug --stacktrace
             adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
-            python3 tools/echo_server.py > /tmp/firewall-echo.log 2>&1 &
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.soakAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest -Pandroid.testInstrumentationRunnerArguments.timeout_msec=4500000 --stacktrace
             python3 tools/verify_vpn_results.py app/build/outputs/androidTest-results/connected/debug
             python3 tools/verify_load_results.py app/build/outputs/androidTest-results/connected/debug --soak

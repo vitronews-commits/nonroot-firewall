@@ -40,6 +40,7 @@ def dns_answer(query):
     if len(query) < 17 or len(query) > 512 or query[4:6] != b"\x00\x01":
         raise ValueError("Invalid DNS question")
     pos = 12
+    labels = []
     while True:
         size = query[pos]
         pos += 1
@@ -47,15 +48,20 @@ def dns_answer(query):
             break
         if size > 63 or pos + size >= len(query):
             raise ValueError("Invalid DNS label")
+        labels.append(query[pos:pos+size].lower())
         pos += size
-    if query[pos:] != b"\x00\x01\x00\x01":
-        raise ValueError("Fixture supports only one A/IN question")
+    if len(query[pos:]) != 4 or query[pos+2:] != b"\x00\x01":
+        raise ValueError("Invalid DNS question class")
+    if b".".join(labels) != b"firewall-test.invalid":
+        return query[:2] + b"\x81\x83\x00\x01\x00\x00\x00\x00\x00\x00" + query[12:]
+    if query[pos:pos+2] != b"\x00\x01":
+        return query[:2] + b"\x81\x80\x00\x01\x00\x00\x00\x00\x00\x00" + query[12:]
     return query[:2] + b"\x81\x80\x00\x01\x00\x01\x00\x00\x00\x00" + query[12:] + b"\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04\xc0\x00\x02\x7b"
 
 
-def dns_udp():
+def dns_udp(port=28082):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server:
-        server.bind(("127.0.0.1", 28082))
+        server.bind(("127.0.0.1", port))
         while True:
             query, address = server.recvfrom(513)
             try:
@@ -85,10 +91,10 @@ def dns_tcp_client(client):
             pass
 
 
-def dns_tcp():
+def dns_tcp(port=28083):
     with socket.socket() as server:
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("127.0.0.1", 28083))
+        server.bind(("127.0.0.1", port))
         server.listen(8)
         while True:
             client, _ = server.accept()
@@ -105,6 +111,8 @@ def lockdown_sink():
                 server.sendto(data, address)
 
 
+threading.Thread(target=dns_udp, args=(53,), daemon=True).start()
+threading.Thread(target=dns_tcp, args=(53,), daemon=True).start()
 threading.Thread(target=lockdown_sink, daemon=True).start()
 threading.Thread(target=dns_udp, daemon=True).start()
 threading.Thread(target=dns_tcp, daemon=True).start()

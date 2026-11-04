@@ -1,6 +1,16 @@
 # NonRoot Firewall — progress
 
-## Current status — 2026-11-04 / 0.2.1-dev
+## Current status — 2026-11-04 / 0.3.0-dev acceptance in progress
+
+- Development branch: `development/daily-use`, [PR #3](https://github.com/vitronews-commits/nonroot-firewall/pull/3). Main remains the verified 0.2.1 baseline.
+- Current source before this fixture milestone: `38d5319baec5bfc6d2a584013e66d77bafd51f2e`, [CI 41814964645](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41814964645), still running.
+- Local 153 JVM tests passed with zero failures/skips, retaining all original 125. Full Android build/lint for that source passed. Actual load/soak/network/lifecycle acceptance is not yet final.
+- Previous API 35 source passed 1/10/100 MiB + 4 concurrent separate-UID TUN transfers. API 29 returned all 1 MiB bytes then reset on EOF: remains a failure until clean half-close passes. Tests were not weakened to accept reset.
+- Bounded NIO TCP/UDP, fresh UID checks at actual I/O, strict persisted policy, safe backups/imports, live monitoring, MTU errors and atomic route/DNS replacement implemented; see dated milestones below.
+- Local execution environment became unavailable during host-fixture verification. Work continues via GitHub; no unexecuted local check is counted as passed.
+- Remaining physical acceptance: Redmi/HyperOS, real IPv6-only/DNS64/NAT64, Doze/reboot and external leak capture. Emulator findings are reported separately. Release signing key remains external; no production certification.
+
+## Verified 0.2.1 baseline (historical) — 2026-11-04 / 0.2.1-dev
 
 - Installable debug APK produced; release APK built unsigned. Five-tab UI and existing preferences retained.
 - Final CI [41801468947](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41801468947), source `22e74810ee6669402550062489a8c8d1e55de5db`: **125 JVM tests, zero failures/errors/skips**, lint, debug/release/test/probe builds and debug signature/ZIP checks all passed.
@@ -443,3 +453,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Link-local IPv6 upstream addresses acquire the selected physical interface scope; policy still evaluates original numeric addresses. Missing scope fails closed. Three JVM tests added; real link-local/NAT64 remains unverified.
 - API 29 diagnostics show all 1 MiB bytes arrived, then upstream reset at EOF. Explicit host fixture SHUT_WR and channel-native half-close added; reset is not accepted as a successful EOF.
 - Gradle 8.9 wrapper generated with official pinned SHA-256. Release key remains external/private; no signing key created.
+
+## Isolated system DNS and environment checkpoint — verification pending
+- Add real Android system name resolution from the separate UID, not only manually constructed DNS packets. Emulator DNS uses an isolated host port-53 fixture; test requires correct A result and an attributed port-53 QUEUED event. Host UDP/TCP DNS fixtures self-check before emulator boot.
+- DPM lockdown coordinator reinstalls the firewall APK after Gradle UTP uninstalls its tested target; previous failure happened before lockdown was configured and is not a protection result.
+- Source edits continued through GitHub after local runtime became unavailable. No physical VPN activation or user-data migration.

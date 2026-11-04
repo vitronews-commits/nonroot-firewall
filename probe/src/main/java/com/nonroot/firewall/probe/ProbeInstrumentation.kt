@@ -176,7 +176,11 @@ class ProbeInstrumentation : Instrumentation() {
                     }
                 }
             }
-            if(mode=="allow") { stage="dns-transports"; dnsTransports() }
+            if(mode=="allow") {
+                stage="system-dns"
+                check(java.net.InetAddress.getAllByName("firewall-test.invalid").any { it.hostAddress=="192.0.2.123" }) { "System DNS through app policy failed" }
+                stage="dns-transports"; dnsTransports()
+            }
             if(mode=="allow" || mode=="udp_block") {
                 DatagramSocket().use { udp ->
                     udp.soTimeout=3000; udp.connect(InetSocketAddress("10.0.2.2",28081))
