@@ -17,8 +17,12 @@ protection on every Android device.
 Development continues in `development/daily-use` / PR #3; main retains 0.2.1-dev.
 The candidate is **not yet accepted for daily use**. The tested Android 10 resolver
 can expose system DNS as package-less UID 1051. Those requests remain blocked;
-there is no blanket DNS exception. Android 15 mobile DNS/handover acceptance also
-has unresolved failures. See [TEST_RESULTS.md](TEST_RESULTS.md) for evidence by source.
+there is no blanket DNS exception. Latest API 35 real-TUN tests pass, including
+DNS and Wi-Fi/mobile handover, but the 60-minute test later fails to attribute a
+new UDP packet safely. Android 15 lockdown blocks traffic after injected process
+death but did not restore an active VPN within the test window. API 29 and
+physical Redmi 13C/HyperOS acceptance remain incomplete. See
+[TEST_RESULTS.md](TEST_RESULTS.md) for evidence by source.
 
 The existing five tabs now include live connection metadata, log search/filtering
 and validated rules import/export. The bounded TCP window replaces stop-and-wait;
