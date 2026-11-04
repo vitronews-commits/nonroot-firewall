@@ -80,11 +80,12 @@ jobs:
             mkdir -p app/build/acceptance-reports/offline
             cp -R app/build/outputs/androidTest-results app/build/acceptance-reports/offline/
             gradle :probe:assembleDebug --stacktrace
-            adb install -r probe/build/outputs/apk/debug/probe-debug.apk
+            adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
             python3 tools/echo_server.py > /tmp/firewall-echo.log 2>&1 &
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.loadAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest --stacktrace
             python3 tools/verify_vpn_results.py app/build/outputs/androidTest-results/connected/debug
             python3 tools/verify_load_results.py app/build/outputs/androidTest-results/connected/debug
+            if [ "${{ matrix.api-level }}" = "35" ]; then python3 tools/check_lockdown.py; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -119,7 +120,7 @@ jobs:
           disable-animations: true
           script: |
             gradle :app:connectedDebugAndroidTest :probe:assembleDebug --stacktrace
-            adb install -r probe/build/outputs/apk/debug/probe-debug.apk
+            adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
             python3 tools/echo_server.py > /tmp/firewall-echo.log 2>&1 &
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.soakAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest -Pandroid.testInstrumentationRunnerArguments.timeout_msec=4500000 --stacktrace
             python3 tools/verify_vpn_results.py app/build/outputs/androidTest-results/connected/debug

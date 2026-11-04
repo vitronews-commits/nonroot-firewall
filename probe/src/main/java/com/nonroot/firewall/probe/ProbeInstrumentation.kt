@@ -13,6 +13,7 @@ import java.net.SocketTimeoutException
 class ProbeInstrumentation : Instrumentation() {
     private var mode="allow"
     private var durationSeconds=0
+    private var token=""
     private var completed=0L
     @Volatile private var progress=""
     private fun transfer(size: Int) {
@@ -59,7 +60,7 @@ class ProbeInstrumentation : Instrumentation() {
             val reply=ByteArray(length); input.readFully(reply); verify(reply)
         }
     }
-    override fun onCreate(arguments: Bundle?) { mode=arguments?.getString("mode") ?: "allow"; durationSeconds=arguments?.getString("durationSeconds")?.toIntOrNull()?.coerceIn(0,3660) ?: 0; start() }
+    override fun onCreate(arguments: Bundle?) { token=arguments?.getString("token").orEmpty(); mode=arguments?.getString("mode") ?: "allow"; durationSeconds=arguments?.getString("durationSeconds")?.toIntOrNull()?.coerceIn(0,3660) ?: 0; start() }
     private fun permissionDenied(error: Throwable): Boolean {
         var cause: Throwable?=error
         while(cause!=null) {
@@ -74,6 +75,49 @@ class ProbeInstrumentation : Instrumentation() {
         var stage="initial"
         var received=0
         try {
+            if(mode.startsWith("lockdown_") || mode=="vpn_status") {
+                check(android.os.Build.HARDWARE in listOf("ranchu","goldfish")) { "Device policy tests require disposable emulator" }
+                val dpm=targetContext.getSystemService(android.app.admin.DevicePolicyManager::class.java)
+                val admin=android.content.ComponentName(targetContext,ProbeAdmin::class.java)
+                when(mode) {
+                    "lockdown_on" -> {
+                        dpm.setAlwaysOnVpnPackage(admin,"com.nonroot.firewall",true)
+                        check(dpm.getAlwaysOnVpnPackage(admin)=="com.nonroot.firewall")
+                        check(dpm.isAlwaysOnVpnLockdownEnabled(admin))
+                        result.putString("status","OK")
+                    }
+                    "lockdown_off" -> { dpm.setAlwaysOnVpnPackage(admin,null,false); result.putString("status","OK") }
+                    "vpn_status" -> {
+                        val cm=targetContext.getSystemService(android.net.ConnectivityManager::class.java)
+                        result.putString("status",if(cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)==true) "VPN" else "NO_VPN")
+                        result.putBoolean("lockdown",dpm.isAlwaysOnVpnLockdownEnabled(admin))
+                    }
+                    "lockdown_probe" -> {
+                        check(token.length in 16..64 && token.all { it.isLetterOrDigit() })
+                        val packet=("lockdown-"+token).toByteArray()
+                        var attempts=0; var denied=0; var escaped=false
+                        DatagramSocket().use { socket ->
+                            socket.soTimeout=5
+                            sendStatus(0,Bundle().apply { putString("phase","READY") })
+                            val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(12)
+                            while(System.nanoTime()<deadline) {
+                                attempts++
+                                try {
+                                    socket.send(DatagramPacket(packet,packet.size,InetSocketAddress("10.0.2.2",28084)))
+                                    val answer=DatagramPacket(ByteArray(128),128)
+                                    try { socket.receive(answer); escaped=true; break } catch(_: SocketTimeoutException) { }
+                                } catch(e: java.io.IOException) { if(permissionDenied(e)) denied++ else throw e }
+                                Thread.sleep(10)
+                            }
+                        }
+                        check(attempts>=100) { "Insufficient process-death probes: $attempts" }
+                        result.putString("status",if(escaped) "ESCAPED" else "BLOCKED")
+                        result.putString("metrics","attempts=$attempts denied=$denied uid=${android.os.Process.myUid()}")
+                    }
+                    else -> error("Unknown control mode")
+                }
+                finish(Activity.RESULT_OK,result); return
+            }
             val payload=ByteArray(1200) { (it*17).toByte() }
             if(mode=="stress" || mode=="soak") {
                 val started=System.nanoTime()
@@ -90,9 +134,14 @@ class ProbeInstrumentation : Instrumentation() {
                 } else {
                     check(durationSeconds>=3600) { "Soak requires at least 60 minutes" }
                     val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(durationSeconds.toLong())
+                    var heartbeatAt=System.nanoTime()
                     while(System.nanoTime()<deadline) {
                         stage="soak-transfer"; transfer(65536); completed+=65536
                         DatagramSocket().use { udp -> udp.soTimeout=5000; udp.connect(InetSocketAddress("10.0.2.2",28081)); udp.send(DatagramPacket(payload,payload.size)); val answer=DatagramPacket(ByteArray(1500),1500); udp.receive(answer); check(answer.data.copyOf(answer.length).contentEquals(payload)) }
+                        if(System.nanoTime()-heartbeatAt>=java.util.concurrent.TimeUnit.SECONDS.toNanos(60)) {
+                            heartbeatAt=System.nanoTime()
+                            sendStatus(0,Bundle().apply { putString("heartbeat","elapsedMs=${(System.nanoTime()-started)/1000000} bytes=$completed pssKiB=${android.os.Debug.getPss()}") })
+                        }
                         Thread.sleep(5000)
                     }
                 }

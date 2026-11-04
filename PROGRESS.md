@@ -430,3 +430,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Protected UDP DatagramChannel uses selector wakeups; unconnected send plus exact remote address/port receive filtering preserves valid zero-length datagrams (connected JDK channel optimized them away). Tests cover empty/1200/1472-byte UDP and counters.
 - Separate-UID fixtures now exchange real DNS wire messages over UDP/TCP, and a 1200-byte UDP echo (QUIC-sized transport, not a QUIC/TLS handshake certification). Mandatory metric verifier rejects missing load or <60-minute soak evidence.
 - Fixed JVM-only CPU metric reflection so Android unit-test compilation does not require unsupported management APIs.
+
+## Android evidence correction and lockdown acceptance harness — verification pending
+- Latest 150-test build passed, but all Android runs correctly failed when sampled SYN-ACK suppressed the first payload log. Distinct payload/control sample keys now preserve the mandatory actual-TCP-return assertion; assertion was not weakened.
+- Added removable test-only DPC to probe APK and an emulator-only process-death test: supported DevicePolicyManager Always-on + lockdown, separate-UID denied UDP during kill/restart, independent host leak sink, recovery and cleanup checks. No admin component added to firewall APK; physical devices are refused.
+- 60-minute soak now records minute heartbeats/PSS/active flow counts and starts with verified screen sleep. This is emulator screen-off evidence only, not physical Doze/battery certification.
+- Removed hash-based RecyclerView stable IDs (distinct package names can have equal Java hashes); DiffUtil retains full package identity.

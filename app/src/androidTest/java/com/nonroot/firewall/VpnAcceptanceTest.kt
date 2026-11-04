@@ -30,10 +30,8 @@ class VpnAcceptanceTest {
         val appStore=AppRuleStore(context,RuleChangeBus::notifySaved)
         val ipStore=RuleStore(context,RuleChangeBus::notifySaved)
         val savedApps=appStore.load(); val savedIps=ipStore.load()
-        fun shell(command: String) {
-            android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use {
-                it.readBytes()
-            }
+        fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use {
+            String(it.readBytes(),Charsets.UTF_8)
         }
         val activity=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         try {
@@ -47,6 +45,7 @@ class VpnAcceptanceTest {
             assertEquals(EngineEvents.snapshot().take(5).toString(),"RUNNING",EngineEvents.status)
             val probePackage="com.nonroot.firewall.probe"
             assertTrue(appStore.save(listOf(AppRule(probePackage,null,Decision.ALLOW))))
+            var peakPss=android.os.Debug.getPss()
             fun probe(mode: String, onReady: ()->Unit = {}): String {
                 val descriptor=instrumentation.uiAutomation.executeShellCommand(
                     "am instrument -w -e mode $mode -e durationSeconds 3600 $probePackage/.ProbeInstrumentation")
@@ -54,7 +53,11 @@ class VpnAcceptanceTest {
                 android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { reader ->
                     while(true) {
                         val line=reader.readLine() ?: break
-                        output.append(line).append('\n')
+                        if(!line.contains("heartbeat=") && !line.contains("INSTRUMENTATION_STATUS_CODE")) output.append(line).append('\n')
+                        if(line.contains("heartbeat=")) {
+                            val memory=android.os.Debug.getPss(); peakPss=maxOf(peakPss,memory)
+                            println("TUN_HEARTBEAT $line enginePssKiB=$memory activeFlows=${EngineEvents.liveConnections().size}")
+                        }
                         if(line.contains("phase=READY")) onReady()
                     }
                 }
@@ -81,10 +84,13 @@ class VpnAcceptanceTest {
             }
             if(InstrumentationRegistry.getArguments().getString("soakAcceptance")=="true") {
                 val begin=System.nanoTime(); val cpu=android.os.Process.getElapsedCpuTime(); val memory=android.os.Debug.getPss()
-                val soak=probe("soak")
+                shell("input keyevent 223")
+                Thread.sleep(500)
+                assertTrue("Screen did not enter sleep",shell("dumpsys power").contains("mWakefulness=Asleep"))
+                val soak=try { probe("soak") } finally { shell("input keyevent 224") }
                 assertTrue(soak.replace("\n"," | "),soak.contains("status=OK"))
                 assertTrue(java.util.concurrent.TimeUnit.NANOSECONDS.toMinutes(System.nanoTime()-begin)>=60)
-                println("TUN_SOAK "+soak.replace("\n"," | ")+" engineCpuMs=${android.os.Process.getElapsedCpuTime()-cpu} enginePssBeforeKiB=$memory enginePssAfterKiB=${android.os.Debug.getPss()}")
+                println("TUN_SOAK enginePssPeakKiB=$peakPss screenOffAtStart=true "+soak.replace("\n"," | ")+" engineCpuMs=${android.os.Process.getElapsedCpuTime()-cpu} enginePssBeforeKiB=$memory enginePssAfterKiB=${android.os.Debug.getPss()}")
             }
             var sawReady=false
             val revoked=probe("tcp_hold") {

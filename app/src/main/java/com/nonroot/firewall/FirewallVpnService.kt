@@ -177,7 +177,9 @@ class FirewallVpnService : VpnService() {
             val engine=PacketForwarder(::tcp,::udp,::policyAllows,{ bytes ->
                 if(!writer.write(bytes)) throw java.io.InterruptedIOException("TUN reply revoked")
                 val h=outboundHeader(bytes)
-                if(trafficLogs.allow(h,1)) EngineEvents.record(h?.let { owners[it]?.connection },"REPLY ${bytes.size} bytes",h?.protocol)
+                val ipSize=if(bytes[0].toInt() ushr 4 and 15==4) 20 else 40
+                val payloadReply=h?.protocol==6 && bytes.size>ipSize+((bytes[ipSize+12].toInt() ushr 4 and 15)*4)
+                if(trafficLogs.allow(h,if(payloadReply) 3 else 1)) EngineEvents.record(h?.let { owners[it]?.connection },"REPLY ${bytes.size} bytes",h?.protocol)
             },onError={ error ->
                 EngineEvents.record(null,"Transport failure: ${error.javaClass.simpleName}: ${error.message}")
             },pathMtu={ underlyingMtu },authorizeIo=::allowed)

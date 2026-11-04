@@ -91,6 +91,17 @@ def dns_tcp():
             threading.Thread(target=dns_tcp_client, args=(client,), daemon=True).start()
 
 
+def lockdown_sink():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server:
+        server.bind(("127.0.0.1", 28084))
+        while True:
+            data, address = server.recvfrom(128)
+            if data.startswith(b"lockdown-") and data[9:].isalnum():
+                print("LOCKDOWN_LEAK " + data[9:].decode("ascii"), flush=True)
+                server.sendto(data, address)
+
+
+threading.Thread(target=lockdown_sink, daemon=True).start()
 threading.Thread(target=dns_udp, daemon=True).start()
 threading.Thread(target=dns_tcp, daemon=True).start()
 threading.Thread(target=tcp, daemon=True).start()
