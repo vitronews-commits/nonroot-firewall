@@ -1,13 +1,51 @@
-name: Android debug build
+name: Android verification
 on:
   push:
-    branches: [main]
+    branches: [main, 'engine/**']
+  pull_request:
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Unit, transport integration, lint and APK builds
+        run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleAndroidTest --stacktrace
+      - name: Verify APK integrity and debug signature
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          unzip -t app/build/outputs/apk/debug/app-debug.apk
+          unzip -t app/build/outputs/apk/release/app-release-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/release/app-release-unsigned.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-reports
+          path: |
+            app/build/reports/
+            app/build/test-results/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nonroot-firewall-apks
+          path: app/build/outputs/apk/
+          if-no-files-found: error
+  instrumentation:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -17,35 +55,21 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Install Android SDK packages
+      - name: Enable KVM
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME}"
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
-          test -n "$SDKMANAGER" || { echo "Android sdkmanager executable not found"; exit 1; }
-          echo "Using $SDKMANAGER"
-          "$SDKMANAGER" --version
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"
-      - name: Build debug APK
-        run: gradle :app:testDebugUnitTest :app:assembleAndroidTest :app:assembleDebug :app:assembleRelease --stacktrace
-      - name: Verify debug APK exists and is non-empty
-        run: |
-          test -s app/build/outputs/apk/debug/app-debug.apk
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
-          unzip -t app/build/outputs/apk/debug/app-debug.apk | tail -n 1
-      - name: Verify release APK exists and is non-empty
-        run: |
-          test -s app/build/outputs/apk/release/app-release-unsigned.apk
-          unzip -t app/build/outputs/apk/release/app-release-unsigned.apk | tail -n 1
-      - name: Upload unit test reports
-        if: always()
-        uses: actions/upload-artifact@v4
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
         with:
-          name: unit-test-reports
-          path: app/build/reports/tests/testDebugUnitTest/
-          if-no-files-found: ignore
+          api-level: 29
+          arch: x86_64
+          disable-animations: true
+          script: gradle :app:connectedDebugAndroidTest --stacktrace
       - uses: actions/upload-artifact@v4
-        if: success()
+        if: always()
         with:
-          name: nonroot-firewall-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          name: instrumentation-results
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/

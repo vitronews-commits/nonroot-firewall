@@ -277,3 +277,19 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [ ] **Not verified:** workflow execution, compilation, test success, or APK availability. An assembled AndroidTest APK is NOT an executed instrumentation test; an emulator/device test runner must be added.
 - [ ] Unsigned release APK is not installable as-is; signing and release readiness remain pending.
 - [ ] Critical gate unchanged: FirewallVpnService remains inactive until bidirectional TCP/UDP forwarding, loop prevention, attribution and leak tests pass.
+
+## Engine integration milestone — 2026-11-04 (implementation, validation in progress)
+- Repository baseline inspected at 6f6dfd0. VPN was a placeholder; no TCP transport existed.
+- Added bounded TCP stop-and-wait proxy and IPv4/IPv6 UDP sessions, strict checksums/length validation, protected socket factories, monotonic timeouts and generation-based invalidation.
+- Added real-socket loopback preflight that must pass BEFORE Builder.establish(); every production socket also requires successful VpnService.protect(). No VPN was activated in the development environment.
+- Connected VpnService, rules, bounded metadata Logs and Pending allow/block actions; retained five tabs and existing SharedPreferences keys.
+- Added unit/integration and Android instrumentation sources. Compilation and execution pending; not a claim of a working firewall.
+- Unsupported fragments, IP options and IPv6 extensions fail closed. TCP performance/compatibility needs further validation; release is not yet ready.
+
+## Transport validation and baseline CI diagnosis — 2026-11-04
+- Executed first integrated JVM suite: all 14 new TCP/UDP tests passed, including real IPv4 TCP/UDP and IPv6 UDP loopback, TCP retry, duplicate/out-of-order data, half-close and reset.
+- Reproduced baseline CI failures in UdpSessionManagerTest (GitHub run 41743946050). Fixtures sent to unbound localhost:53; ICMP port-unreachable raced the assertions. Tests now bind an ephemeral destination socket and close it after each test. Existing failed-socket test synchronizes intentional close/submission to test the intended path deterministically.
+- A subsequent JVM run passed 109 tests. Later policy/pre-filter changes require final rerun.
+- Corrected Global Pre-Filters precedence: first matching global filter now precedes app filters/app access. This prevents app Allow bypassing a global Block; persisted formats/keys remain unchanged.
+- Updated instrumentation setup to AndroidX runner after catching missing legacy android.test classes at compilation. Emulator installation complete; execution still pending.
+- Added CI jobs for JVM/integration tests, lint, debug/release/test APK builds and actual emulator instrumentation. CI execution for this implementation pending.

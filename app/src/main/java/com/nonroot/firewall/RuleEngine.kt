@@ -8,14 +8,21 @@ data class Connection(val packageName: String, val ip: String, val port: Int, va
 data class IpRule(val packageName: String?, val cidr: String, val network: NetworkKind?, val decision: Decision, val port: Int? = null)
 data class AppRule(val packageName: String, val network: NetworkKind?, val decision: Decision)
 
-/** Pure policy engine. No network forwarding is implemented in this milestone. */
+/** Pure policy engine: global pre-filters, app filters, app access, then pending. */
 class RuleEngine(
     val ipRules: MutableList<IpRule> = mutableListOf(),
     val appRules: MutableList<AppRule> = mutableListOf()
 ) {
     fun decide(connection: Connection): Decision {
         require(connection.port in 0..65535)
-        // Precedence: first matching app-specific filter, then app access, then global filters, then pending.
+        // Global UI pre-filters run first. Each filter list uses first-match ordering.
+        val global = ipRules.filter {
+            it.packageName == null &&
+            (it.network == null || it.network == connection.network) &&
+            (it.port == null || it.port == connection.port) &&
+            matchesCidr(connection.ip, it.cidr)
+        }
+        global.firstOrNull()?.let { return it.decision }
         val specific = ipRules.filter {
             it.packageName == connection.packageName &&
             (it.network == null || it.network == connection.network) &&
@@ -27,13 +34,6 @@ class RuleEngine(
             ?.let { return it.decision }
         appRules.lastOrNull { it.packageName == connection.packageName && it.network == null }
             ?.let { return it.decision }
-        val global = ipRules.filter {
-            it.packageName == null &&
-            (it.network == null || it.network == connection.network) &&
-            (it.port == null || it.port == connection.port) &&
-            matchesCidr(connection.ip, it.cidr)
-        }
-        global.firstOrNull()?.let { return it.decision }
         return Decision.PENDING // Ask by default: unknown connections must never pass.
     }
 

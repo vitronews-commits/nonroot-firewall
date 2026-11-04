@@ -6,11 +6,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class UdpSessionManagerTest {
+    private lateinit var sink: DatagramSocket
+    @org.junit.Before fun bindDestination() {
+        sink = DatagramSocket(0, java.net.InetAddress.getByName("127.0.0.1"))
+    }
+    @org.junit.After fun closeDestination() { sink.close() }
     private fun request(port: Int = 12000) = UdpDatagram.Parsed(
-        "10.0.0.2", "127.0.0.1", port, 53, byteArrayOf(1)
+        "10.0.0.2", "127.0.0.1", port, sink.localPort, byteArrayOf(1)
     )
     private fun key(port: Int = 12000) =
-        FlowKey(17, "10.0.0.2", port, "127.0.0.1", 53, NetworkKind.WIFI)
+        FlowKey(17, "10.0.0.2", port, "127.0.0.1", sink.localPort, NetworkKind.WIFI)
 
     @Test fun pendingNeverOpensSocket() {
         var opened = 0
@@ -188,8 +193,10 @@ class UdpSessionManagerTest {
             }
         }, {}, capacity = 1).use { manager ->
             assertTrue(manager.submit(key(), request(), PacketPolicy.Result.ALLOW))
-            sockets[0].close()
-            assertFalse(manager.submit(key(), request(), PacketPolicy.Result.ALLOW))
+            synchronized(manager) {
+                sockets[0].close()
+                assertFalse(manager.submit(key(), request(), PacketPolicy.Result.ALLOW))
+            }
             assertEquals(0, manager.activeCount())
             assertEquals(1, sockets.size)
         }

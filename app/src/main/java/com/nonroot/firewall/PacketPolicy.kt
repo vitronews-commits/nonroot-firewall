@@ -19,7 +19,7 @@ object PacketPolicy {
         network: NetworkKind,
         engine: RuleEngine
     ): Result {
-        if (packet == null) return Result.UNSUPPORTED
+        if (packet == null || packet.fragmented || packet.protocol !in listOf(6,17)) return Result.UNSUPPORTED
         if (packageName.isNullOrBlank()) return Result.UNATTRIBUTED
         val port = packet.destinationPort ?: return Result.UNSUPPORTED
         return when (engine.decide(Connection(packageName, packet.destination, port, network))) {

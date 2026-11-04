@@ -20,7 +20,7 @@ import java.util.concurrent.Executors
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.LinearLayoutManager
 
-/** Classic minimal shell. Rules are saved locally but NOT enforced until VPN engine integration. */
+/** Classic minimal shell. Rules persist locally and are enforced by the VPN packet engine. */
 class MainActivity : Activity() {
     private lateinit var content: LinearLayout
     private lateinit var screenHost: FrameLayout
@@ -223,9 +223,9 @@ class MainActivity : Activity() {
         }
         when (page) {
             "Home" -> homeScreen()
-            "Pending" -> message("No live pending accesses — VPN engine not connected.")
+            "Pending" -> pendingScreen()
             "Apps" -> appsScreen()
-            "Logs" -> message("No connection logs — VPN engine not connected.")
+            "Logs" -> logsScreen()
             "Global" -> globalScreen()
         }
     }
@@ -468,6 +468,55 @@ class MainActivity : Activity() {
         })
     }
 
+
+    private fun startFirewall() {
+        startForegroundService(Intent(this, FirewallVpnService::class.java))
+        mainHandler.postDelayed({ if (!isFinishing) render() }, 500)
+    }
+
+    @Deprecated("Platform activity result compatibility")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 701 && resultCode == RESULT_OK) startFirewall()
+    }
+
+    private fun pendingScreen() {
+        content.addView(Button(this).apply { text = "Refresh"; setOnClickListener { render() } })
+        val requests = EngineEvents.pending.snapshot()
+        if (requests.isEmpty()) message("No pending requests. Unknown connections are blocked.")
+        for (request in requests.asReversed()) {
+            val c = request.connection
+            message("${c.packageName}\n${c.ip}:${c.port} · ${c.network} · ${request.attempts} attempts")
+            val row = LinearLayout(this)
+            for (decision in listOf(Decision.ALLOW, Decision.BLOCK)) {
+                row.addView(Button(this).apply {
+                    text = decision.name
+                    setOnClickListener {
+                        val previous = rules.toList()
+                        val cidr = c.ip + if (':' in c.ip) "/128" else "/32"
+                        rules.removeAll { it.packageName == c.packageName && it.cidr == cidr && it.port == c.port && it.network == c.network }
+                        rules.add(0, IpRule(c.packageName, cidr, c.network, decision, c.port))
+                        if (store.save(rules)) EngineEvents.pending.resolve(c)
+                        else { rules.clear(); rules.addAll(previous); Toast.makeText(this@MainActivity,"Unable to save",Toast.LENGTH_LONG).show() }
+                        render()
+                    }
+                }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            }
+            content.addView(row)
+        }
+    }
+
+    private fun logsScreen() {
+        content.addView(Button(this).apply { text = "Refresh"; setOnClickListener { render() } })
+        val events = EngineEvents.snapshot()
+        if (events.isEmpty()) message("No connection events recorded in this process.")
+        for (event in events) {
+            val c = event.connection
+            val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(event.time))
+            message("$time · ${event.result}" + if (c != null) "\n${c.packageName} → ${c.ip}:${c.port} · ${c.network}" else "")
+        }
+    }
+
     private fun homeScreen() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -475,7 +524,12 @@ class MainActivity : Activity() {
             setPadding(dp(16), dp(28), dp(16), dp(16))
         }
         box.addView(Button(this).apply {
-            text = "START"; textSize = 26f; isEnabled = false
+            text = "START"; textSize = 26f
+            setOnClickListener {
+                val consent = android.net.VpnService.prepare(this@MainActivity)
+                if (consent != null) startActivityForResult(consent, 701)
+                else startFirewall()
+            }
         }, LinearLayout.LayoutParams(dp(150), dp(100)))
         box.addView(TextView(this).apply {
             text = "Click OK when it tries to create VPN connection"
@@ -483,11 +537,12 @@ class MainActivity : Activity() {
         })
         box.addView(CheckBox(this).apply { text = "Auto start on boot"; isEnabled = false })
         box.addView(Button(this).apply {
-            text = "STOP"; textSize = 28f; isEnabled = false
+            text = "STOP"; textSize = 28f
+            setOnClickListener { stopService(Intent(this@MainActivity, FirewallVpnService::class.java)); render() }
             setBackgroundColor(Color.rgb(211,47,47)); setTextColor(Color.WHITE)
         }, LinearLayout.LayoutParams(dp(150), dp(80)).apply { topMargin = dp(60) })
         box.addView(TextView(this).apply {
-            text = "Firewall engine not integrated — protection OFF"
+            text = EngineEvents.status + "\nTCP/UDP preflight runs before VPN activation.\nUnknown/shared UID and unsupported packets are blocked."
             setTextColor(Color.RED); gravity = Gravity.CENTER; setPadding(0, dp(20), 0, 0)
         })
         content.addView(box)

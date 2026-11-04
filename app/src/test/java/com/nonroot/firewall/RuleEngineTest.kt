@@ -45,11 +45,11 @@ class RuleEngineTest {
         assertEquals(false, RuleEngine.isValidCidr("192.0.2.1/33"))
     }
 
-    @Test fun appRuleOverridesGlobalIpRule() {
+    @Test fun globalPreFilterOverridesAppAccess() {
         val engine = RuleEngine()
         engine.ipRules.add(IpRule(null, "192.0.2.0/24", null, Decision.BLOCK))
         engine.appRules.add(AppRule("com.android.chrome", null, Decision.ALLOW))
-        assertEquals(Decision.ALLOW, engine.decide(chrome))
+        assertEquals(Decision.BLOCK, engine.decide(chrome))
     }
 
     @Test fun specificAppIpOverridesGeneralAppRule() {
