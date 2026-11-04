@@ -62,8 +62,16 @@ class VpnAcceptanceTest {
             }
             val allowed=probe("allow")
             assertTrue(allowed+"\n"+EngineEvents.snapshot().take(12),allowed.contains("status=OK"))
-            assertTrue("Separate-UID attribution did not reach engine: "+EngineEvents.snapshot().take(12),EngineEvents.snapshot().any {
-                it.connection?.packageName==probePackage && it.result=="QUEUED"
+            val events=EngineEvents.snapshot()
+            for(port in listOf(28080,28081)) {
+                assertTrue("Missing real probe transport on port $port: "+events.take(12),events.any {
+                    it.connection?.packageName==probePackage && it.connection.port==port && it.result=="QUEUED"
+                })
+            }
+            assertTrue("TCP payload did not traverse the TUN return path: "+events.take(12),events.any {
+                it.connection?.packageName==probePackage && it.connection.port==28080 &&
+                    it.result.startsWith("REPLY ") &&
+                    (it.result.removePrefix("REPLY ").substringBefore(' ').toIntOrNull() ?: 0)>64
             })
             var sawReady=false
             val revoked=probe("tcp_hold") {

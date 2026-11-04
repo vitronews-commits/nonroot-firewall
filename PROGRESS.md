@@ -396,3 +396,7 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - API 35 fixture accepts only explicit EPERM/EACCES in expected denied phases; exact UDP Pending and established-connection READY assertions prevent an unrelated OS failure from falsely satisfying the test.
 - Created TEST_RESULTS.md with artifact downloads, per-API evidence, checksums, install/data-preservation instructions and remaining physical-device criteria.
 - Local execution environment disconnected after successful local testing. No unverified local file link is presented; installable APKs and reports are available from the verified GitHub Actions artifacts.
+
+## Transport-specific Android evidence — 2026-11-04
+- Strengthened actual TUN acceptance to require separate QUEUED records for TCP port 28080 and UDP port 28081, plus a TCP payload-bearing REPLY written to TUN. A UDP-only event cannot satisfy the large TCP transfer claim.
+- New checks require execution on both API levels; no additional production engine change.
