@@ -115,7 +115,15 @@ class FirewallVpnService : VpnService() {
             val poll=StructPollfd().apply { fd=incoming.fd; events=OsConstants.POLLIN.toShort() }
             val writeLock=Any()
             val engine=PacketForwarder(::tcp,::udp,::allowed,{ bytes ->
-                synchronized(writeLock) { if(!stopped.get()) out.write(bytes) }
+                synchronized(writeLock) {
+                    if(!stopped.get()) {
+                        out.write(bytes)
+                        val h=PacketParser.parse(bytes)?.let { TransportPacket.reverse(it) }
+                        EngineEvents.record(h?.let { owners[it] },"REPLY ${bytes.size} bytes")
+                    }
+                }
+            },onError={ error ->
+                EngineEvents.record(null,"Transport failure: ${error.javaClass.simpleName}: ${error.message}")
             })
             forwarder=engine
             EngineEvents.status="RUNNING"
@@ -151,7 +159,7 @@ class FirewallVpnService : VpnService() {
                     owners[h]=connection
                 } else owners.remove(h)
                 val forwarded=engine.accept(bytes)
-                EngineEvents.record(connection,if(forwarded) "FORWARDED" else decision.name+" / dropped")
+                EngineEvents.record(connection,if(forwarded) "QUEUED" else if(decision==Decision.ALLOW) "DROP transport capacity/state" else decision.name+" / dropped")
             }
         } catch(e: Exception) {
             if(!stopped.get()) {

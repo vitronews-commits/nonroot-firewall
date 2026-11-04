@@ -58,7 +58,7 @@ class VpnAcceptanceTest {
             val allowed=probe("allow")
             assertTrue(allowed+"\n"+EngineEvents.snapshot().take(12),allowed.contains("status=OK"))
             assertTrue("Separate-UID attribution did not reach engine: "+EngineEvents.snapshot().take(12),EngineEvents.snapshot().any {
-                it.connection?.packageName==probePackage && it.result=="FORWARDED"
+                it.connection?.packageName==probePackage && it.result=="QUEUED"
             })
             val revoked=probe("tcp_hold") {
                 assertTrue(ipStore.save(listOf(IpRule(null,"10.0.2.2/32",null,Decision.BLOCK,28080))))

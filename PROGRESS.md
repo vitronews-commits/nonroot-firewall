@@ -330,3 +330,10 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - The previous VPN test's TCP/UDP exchanges succeeded but its UID-attribution assertion failed: traffic from the VPN owner's own UID did not prove interception. This was a test design failure, not a passing firewall test; the assertion prevented a false success report.
 - Added a minimal `:probe` APK with a distinct UID and self-targeting instrumentation. The revised acceptance test requires probe TCP/UDP echo traffic, logged probe ownership, revocation of a live probe TCP connection, and default-blocked UDP appearing in Pending.
 - Probe/main/test APKs compile successfully. Actual separate-UID test execution pending.
+
+## Real TUN acceptance milestone — 2026-11-04
+- **Passed on local Android 29 emulator with a separate probe UID:** TCP echo payload integrity, UDP echo payload integrity, correct probe package attribution in the real engine, revocation of an established TCP flow by a global IP/port rule, and default-blocked unknown UDP recorded in Pending. Test completed `OK (1 test)` after the three no-VPN Android tests passed `OK (3 tests)`.
+- Protected preflight passed before TUN establishment. The native TCP descriptor fix is confirmed on Android.
+- GitHub run 41748206475 completed successfully (build plus Android instrumentation). Independent-probe revision is also running in CI; local independent-probe success is already established.
+- Clarified logs: QUEUED means transport acceptance, REPLY means an actual TUN write, and transport exceptions are recorded. This avoids labeling an accepted queue item as delivered traffic. Final regression run after logging changes is in progress.
+- Full local build including both app/probe lint, 111 JVM tests and all APK builds passed (161 tasks, verified-build.log).

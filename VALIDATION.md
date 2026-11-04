@@ -25,6 +25,8 @@ must be distinguished from passing off-tunnel socket tests.
   DoT and DoH are subject to the originating application's connection policy.
 - Flow tables, workers, queues, attribution cache and logs are bounded. Rule or
   network changes invalidate flows; generation numbers suppress late replies.
+- Logs distinguish QUEUED (accepted for transport), REPLY (written to TUN), and
+  transport failures; queue acceptance alone is not a delivery guarantee.
 - No packet payloads are logged. Pending/Logs are process-local bounded metadata,
   not durable traffic history. Pending approval applies to subsequent retries.
 
