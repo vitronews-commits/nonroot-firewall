@@ -337,3 +337,7 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - GitHub run 41748206475 completed successfully (build plus Android instrumentation). Independent-probe revision is also running in CI; local independent-probe success is already established.
 - Clarified logs: QUEUED means transport acceptance, REPLY means an actual TUN write, and transport exceptions are recorded. This avoids labeling an accepted queue item as delivered traffic. Final regression run after logging changes is in progress.
 - Full local build including both app/probe lint, 111 JVM tests and all APK builds passed (161 tasks, verified-build.log).
+
+## Android-version verification expansion — 2026-11-04
+- Expanded CI instrumentation to Android API 29 and API 35 (Android 15), with independent report artifacts per API. Both run off-TUN tests before the explicitly gated separate-UID TUN acceptance test.
+- This complements, but does not replace, physical Redmi 13C checks for network transitions, Doze, OEM process management, and leak capture.

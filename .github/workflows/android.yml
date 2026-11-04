@@ -48,6 +48,11 @@ jobs:
             probe/build/outputs/apk/debug/
           if-no-files-found: error
   instrumentation:
+    name: Android API ${{ matrix.api-level }}
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [29, 35]
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -67,7 +72,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: ${{ matrix.api-level }}
           arch: x86_64
           disable-animations: true
           script: |
@@ -81,7 +86,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: instrumentation-results
+          name: instrumentation-results-api-${{ matrix.api-level }}
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
