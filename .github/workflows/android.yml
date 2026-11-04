@@ -95,6 +95,7 @@ jobs:
             adb shell settings put global captive_portal_mode 0
             adb shell settings put global private_dns_mode off
             adb shell svc data disable
+            adb logcat -b all -v threadtime > /tmp/firewall-system.log &
             gradle :app:connectedDebugAndroidTest --stacktrace
             mkdir -p app/build/acceptance-reports/offline
             cp -R app/build/outputs/androidTest-results app/build/acceptance-reports/offline/
@@ -113,7 +114,7 @@ jobs:
         if: always()
         run: |
           mkdir -p app/build/acceptance-reports/host
-          cp /tmp/firewall-echo.log /tmp/direct-socket.txt /tmp/direct-channel.txt app/build/acceptance-reports/host/ 2>/dev/null || true
+          cp /tmp/firewall-echo.log /tmp/firewall-system.log /tmp/direct-socket.txt /tmp/direct-channel.txt app/build/acceptance-reports/host/ 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -155,6 +156,7 @@ jobs:
             adb shell settings put global captive_portal_mode 0
             adb shell settings put global private_dns_mode off
             adb shell svc data disable
+            adb logcat -b all -v threadtime > /tmp/firewall-system.log &
             gradle :app:connectedDebugAndroidTest :probe:assembleDebug --stacktrace
             adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
             adb shell am instrument -w -e mode direct_socket com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-socket.txt
@@ -170,7 +172,7 @@ jobs:
         if: always()
         run: |
           mkdir -p app/build/acceptance-reports/host
-          cp /tmp/firewall-echo.log /tmp/direct-socket.txt /tmp/direct-channel.txt app/build/acceptance-reports/host/ 2>/dev/null || true
+          cp /tmp/firewall-echo.log /tmp/firewall-system.log /tmp/direct-socket.txt /tmp/direct-channel.txt app/build/acceptance-reports/host/ 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -212,6 +214,7 @@ jobs:
             adb shell settings put global captive_portal_mode 0
             adb shell settings put global private_dns_mode off
             adb shell svc data disable
+            adb logcat -b all -v threadtime > /tmp/firewall-system.log &
             gradle :app:connectedDebugAndroidTest :probe:assembleDebug --stacktrace
             adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
             python3 tools/check_lockdown.py
@@ -219,7 +222,7 @@ jobs:
         if: always()
         run: |
           mkdir -p app/build/acceptance-reports/host
-          cp /tmp/firewall-echo.log /tmp/direct-socket.txt /tmp/direct-channel.txt app/build/acceptance-reports/host/ 2>/dev/null || true
+          cp /tmp/firewall-echo.log /tmp/firewall-system.log /tmp/direct-socket.txt /tmp/direct-channel.txt app/build/acceptance-reports/host/ 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

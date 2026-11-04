@@ -64,7 +64,7 @@ class MainActivity : Activity() {
             mainHandler.postDelayed(this, 1000)
         }
     }
-    private fun statusText() = EngineEvents.status + "\nTCP/UDP preflight runs before VPN activation.\nUnknown/shared UID and unsupported packets are blocked."
+    private fun statusText() = EngineEvents.status + if(EngineEvents.tunnelEstablished) "\nVPN routes captured. Unknown/shared UID and unsupported packets are blocked." else "\nVPN routes are not captured by this app. TCP/UDP preflight runs before activation."
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density + 0.5f).toInt()
     private fun appInfo(pkg: String): Pair<String, Drawable?> = try {

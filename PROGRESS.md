@@ -528,3 +528,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 
 - Keep DNS compatibility failures until the final assertion so reconnect, repeated START/STOP and corrupt-policy repair are still exercised. The test still fails when any recorded requirement fails.
 - Add 32 round-trip latency samples (median/p95) and one persistent TCP stream throughout the 60-minute screen-off transfer loop, alongside fresh TCP/UDP sessions. The metrics validator requires those observations; pending execution.
+
+## 2026-11-04 — transparent route status and crash diagnostics
+
+- Home status distinguishes captured VPN routes from an inactive app; it no longer claims traffic blocking while the VPN is off.
+- Preserve full emulator logcat independently of UTP: API 29 system crashes left no per-test logcat. Crashes remain failures.
+- Downloaded candidate 16d9448 APK matches CI SHA-256 b2e54bae18d506688db6f9b1d523232f1c04363b659a3e543a5835d4eb67328b; development candidate, not daily-use acceptance.
