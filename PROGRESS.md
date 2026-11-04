@@ -1,23 +1,33 @@
-## 2026-11-04 — TCP incarnation and FIN persistence hardening (verification pending)
+## 2026-11-04 — TCP incarnation and FIN persistence hardening (CI verified)
 
 - Retain the existing engine and all 125 baseline tests.
 - Per-flow atomic leases revoke stale workers before tuple reuse; response delivery verifies the exact incarnation under the flow monitor.
 - FIN persistence no longer emits the previous payload byte at the FIN sequence. Keepalive probes are acknowledged without forwarding probe data. Idle expiry emits a reset and upstream sockets enable keepalive.
 - Corrupt-policy acceptance now waits for an actually established closed TUN, not merely an early error status.
-- Added three regression tests; not yet declared passing. Local wrapper execution failed because the Gradle distribution network endpoint is unreachable. CI is the validation authority for this milestone.
-- Previous head 72b4f55 built successfully, but API 35 acceptance failed on mobile system DNS; the 60-minute job failed on its subsequent DNS Pending assertion. API 29 aborted with an emulator system crash. These are not overall PASS results.
+- Added three regression tests; latest CI verifies 162 JVM tests, zero failures/errors/skips, preserving all 125 baseline IDs.
+- Latest build/lint/debug/unsigned-release passed on source `7fd4a62f60bbd1c15ab974c2a6058a91fc440954`, run 41865446592. Daily-use acceptance still has the blockers below.
 
 # NonRoot Firewall — progress
 
-## Current status — 2026-11-04 / 0.3.0-dev acceptance in progress
+## Current status — 2026-11-04 / 0.3.0-dev not yet daily-use ready
 
 - Development branch: `development/daily-use`, [PR #3](https://github.com/vitronews-commits/nonroot-firewall/pull/3). Main remains the verified 0.2.1 baseline.
-- Current source before this fixture milestone: `38d5319baec5bfc6d2a584013e66d77bafd51f2e`, [CI 41814964645](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41814964645), still running.
-- Local 153 JVM tests passed with zero failures/skips, retaining all original 125. Full Android build/lint for that source passed. Actual load/soak/network/lifecycle acceptance is not yet final.
-- Previous API 35 source passed 1/10/100 MiB + 4 concurrent separate-UID TUN transfers. API 29 returned all 1 MiB bytes then reset on EOF: remains a failure until clean half-close passes. Tests were not weakened to accept reset.
+- Latest evidence: [CI 41865446592](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41865446592), source `7fd4a62f60bbd1c15ab974c2a6058a91fc440954`.
+- Build, lint, debug and unsigned release APK: PASS. JVM: 162 tests, zero failures/errors/skips; all 125 original IDs preserved.
+- API 35 separate-UID TUN acceptance: PASS (explicit test executed, 1 pass / 0 skips). TCP/UDP, DNS, active-flow rule revocation, Wi-Fi/mobile handover, reconnect, repeated STOP/START and corrupt-policy closed bootstrap/repair passed. 1/10/100 MiB timings: 837/6,804/70,632 ms; four concurrent flows; median latency 1,265 µs, p95 1,802 µs.
+- API 29 acceptance: FAIL. System DNS UID 1051 has no package attribution and remains denied; client-first half-close resets in independent no-VPN controls; emulator later crashes with EMFILE / INSTRUMENTATION_ABORTED.
+- 60-minute API 35 screen-off data interval measured 3,601,482 ms, 42,467,328 TCP bytes and 648 persistent echoes. Overall JUnit FAIL afterward: new UDP ownership returned UID 0/no packages, so the exact app-specific Pending entry could not be safely attributed.
+- Android 15 Always-on/lockdown across process death: FAIL for recovery. No external UDP escape was observed and lockdown kept the probe UID blocked, but Android did not restore an active VPN within 60 seconds.
 - Bounded NIO TCP/UDP, fresh UID checks at actual I/O, strict persisted policy, safe backups/imports, live monitoring, MTU errors and atomic route/DNS replacement implemented; see dated milestones below.
 - Local execution environment became unavailable during host-fixture verification. Work continues via GitHub; no unexecuted local check is counted as passed.
-- Remaining physical acceptance: Redmi/HyperOS, real IPv6-only/DNS64/NAT64, Doze/reboot and external leak capture. Emulator findings are reported separately. Release signing key remains external; no production certification.
+- Remaining physical acceptance: Redmi/HyperOS, reboot, actual Doze/battery behavior, real IPv6-only/DNS64/NAT64 and external leak capture. No physical-device VPN was activated. Do not treat the candidate as verified for daily use until failures are resolved and physical checks pass.
+
+## 2026-11-04 — daily-use readiness review
+
+- Reviewed the API 29, API 35, independent lockdown and 60-minute soak artifacts, including JUnit XML and actual TUN logs.
+- API 35 load sample: engine CPU 48,325 ms; PSS 122,283→48,343 KiB. The soak sample measured CPU 48,095 ms, PSS 121,924→48,687 KiB, peak 110,925 KiB. Emulator-only measurements; screen-off soak used a test-only partial wake lock and is not a battery/Doze certification.
+- Lockdown test confirms traffic stayed blocked while the service process was killed, but active VPN recovery timed out. This is fail-closed network containment, not proof of automatic service restart.
+- The Android VPN settings action already exposes Always-on and “Block connections without VPN”; physical Redmi/HyperOS behavior is still unverified.
 
 ## Verified 0.2.1 baseline (historical) — 2026-11-04 / 0.2.1-dev
 
