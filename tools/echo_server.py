@@ -56,7 +56,8 @@ def dns_answer(query):
         raise ValueError("Invalid DNS question class")
     question = query[12:pos+4]  # Ignore EDNS additional records; response ARCOUNT is zero.
     if b".".join(labels) == b"firewall-test.invalid":
-        print(f"DNS_FIXTURE queryType={int.from_bytes(query[pos:pos+2], chr(98)+chr(105)+chr(103))} bytes={len(query)}", flush=True)
+        query_type = int.from_bytes(query[pos:pos+2], "big")
+        print(f"DNS_FIXTURE queryType={query_type} bytes={len(query)}", flush=True)
     if b".".join(labels) != b"firewall-test.invalid":
         return query[:2] + b"\x81\x83\x00\x01\x00\x00\x00\x00\x00\x00" + question
     if query[pos:pos+2] != b"\x00\x01":

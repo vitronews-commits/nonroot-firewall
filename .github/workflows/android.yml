@@ -81,14 +81,18 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -dns-server 127.0.0.1
           script: |
+            adb shell settings put global captive_portal_mode 0
+            adb shell settings put global private_dns_mode off
             gradle :app:connectedDebugAndroidTest --stacktrace
             mkdir -p app/build/acceptance-reports/offline
             cp -R app/build/outputs/androidTest-results app/build/acceptance-reports/offline/
             gradle :probe:assembleDebug --stacktrace
             adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
             adb shell am instrument -w -e mode direct_socket com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-socket.txt
+            cat /tmp/direct-socket.txt
             grep 'status=OK' /tmp/direct-socket.txt
             adb shell am instrument -w -e mode direct_channel com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-channel.txt
+            cat /tmp/direct-channel.txt
             grep 'status=OK' /tmp/direct-channel.txt
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.loadAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest --stacktrace
             python3 tools/verify_vpn_results.py app/build/outputs/androidTest-results/connected/debug
@@ -137,11 +141,15 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -dns-server 127.0.0.1
           script: |
+            adb shell settings put global captive_portal_mode 0
+            adb shell settings put global private_dns_mode off
             gradle :app:connectedDebugAndroidTest :probe:assembleDebug --stacktrace
             adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
             adb shell am instrument -w -e mode direct_socket com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-socket.txt
+            cat /tmp/direct-socket.txt
             grep 'status=OK' /tmp/direct-socket.txt
             adb shell am instrument -w -e mode direct_channel com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-channel.txt
+            cat /tmp/direct-channel.txt
             grep 'status=OK' /tmp/direct-channel.txt
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.soakAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest -Pandroid.testInstrumentationRunnerArguments.timeout_msec=4500000 --stacktrace
             python3 tools/verify_vpn_results.py app/build/outputs/androidTest-results/connected/debug
