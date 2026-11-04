@@ -1,23 +1,14 @@
 # NonRoot Firewall — progress
 
-## Current status — 2026-11-04
+## Current status — 2026-11-04 / 0.2.1-dev
 
-- **Working development APK produced.** VpnService engine forwards protected IPv4/IPv6 TCP/UDP, attributes Android UIDs and applies app/network/IP/CIDR/port rules. Five-tab UI and existing preference keys retained; Pending/Logs are live.
-- **Final CI passed:** [run 41753223859](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41753223859), source commit `d5aa925c97f4facffc73d75e5ba10809bcdaefd3`: 112 JVM unit/integration tests, app lint, debug/release/test/probe APK builds, APK ZIP/signature checks.
-- **Actual Android acceptance passed on API 29 and API 35:** three no-VPN tests plus one explicitly executed separate-UID real-TUN test per API. Mandatory JUnit verification confirms the explicit TUN test was not skipped.
-- Real TUN checks cover TCP/UDP payload integrity, probe UID attribution, revocation of established TCP by global IP/port rule, and exact default-blocked UDP request in Pending. Protected preflight precedes TUN establishment.
-- Fixed ACK busy-wait, stale-owner-cache bulk disconnections, redundant invalidation on unchanged Wi-Fi capability/RSSI callbacks, and post-socket-allocation revocation checks.
-- Debug APK is installable; release APK is intentionally unsigned. Downloads and checksums: [TEST_RESULTS.md](TEST_RESULTS.md).
-- **Remaining physical/release acceptance:** Redmi 13C network switching/Doze/reboot/lockdown, external DNS/IPv6 leak capture, throughput/long-transfer checks, and a persistent private release signing key. Conservative TCP and unsupported fragment/extension limits are explicit in VALIDATION.md; no production-certification claim.
-
-## TCP MSS continuation — 2026-11-04 (0.2.1-dev; CI pending)
-
-- Implemented bounded TCP option traversal and SYN-only MSS parsing; malformed, zero, duplicate and out-of-bounds MSS options fail closed.
-- SYN-ACK advertises the tunnel receive MSS. Downstream data honors the peer MSS and MTU: up to 1460 bytes IPv4 / 1440 IPv6, with RFC defaults 536/1220 when omitted. Stop-and-wait remains; no sliding-window throughput claim.
-- Runtime protected preflight now verifies MSS negotiation before TUN establishment. Separate-UID Android probe transfers 64 KiB over TCP and verifies all returned bytes; UDP remains a separate small datagram test.
-- Local standalone JVM transport suite passed (codec and real TCP socket tests); full Android build, full regression suite and API 29/35 actual TUN checks are pending CI.
-- Version code 3 / version 0.2.1-dev. Existing UI, preferences and production socket-protection gates retained.
-- Protocol reference: RFC 9293 §3.7.1 (https://www.rfc-editor.org/rfc/rfc9293.html#section-3.7.1).
+- Installable debug APK produced; release APK built unsigned. Five-tab UI and existing preferences retained.
+- Final CI [41801468947](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41801468947), source `22e74810ee6669402550062489a8c8d1e55de5db`: **125 JVM tests, zero failures/errors/skips**, lint, debug/release/test/probe builds and debug signature/ZIP checks all passed.
+- **API 29 and API 35 actual TUN acceptance passed, explicitly not skipped.** Each API also passed three no-VPN tests. Separate-UID probe verifies 64 KiB TCP echo, UDP echo, attribution, active TCP revocation and exact blocked UDP Pending. Transport-specific QUEUED and payload-bearing TCP REPLY assertions prevent bypass-only false positives.
+- Added bounded SYN MSS negotiation: response segments honor peer MSS and tunnel MTU (1460 IPv4 / 1440 IPv6; absent-option defaults 536/1220). Runtime protected preflight verifies negotiation before TUN establishment.
+- Fixed cumulative ACK processing during full-duplex uploads; ordered payload and ACK progression are independent, with future ACK rejection and uint32 wrap checks. Two new socket regressions fail against preceding code and pass with the fix. All 20 local transport tests pass.
+- Download links, exact hashes and installation/data-preservation instructions: [TEST_RESULTS.md](TEST_RESULTS.md). Extracted debug APK hash matches CI.
+- Remaining: physical Redmi 13C network switching/Doze/reboot/lockdown, external DNS/IPv6 leak capture, sustained throughput and private persistent release signing key. Stop-and-wait TCP and unsupported fragment/extension limits remain explicit in VALIDATION.md. No production-certification claim; no user-device VPN activated.
 
 ## Historical scaffold record (superseded by current status)
 
@@ -406,3 +397,7 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Track the oldest unacknowledged server sequence and process valid cumulative ACK progress independently from ordered payload consumption. Future ACKs remain rejected; old ACKs never clear new outstanding data; receive-window bounds and unsigned wrap checks are retained.
 - Regression proof: the two targeted real-socket tests fail against the preceding TCP implementation, while all 20 local transport tests pass with the fix (13 TCP session / 7 MSS codec). Full project CI pending; expected total 125 JVM tests.
 - Probe failures now include received-byte progress, and nested instrumentation text is flattened in assertion messages to avoid corrupting the outer instrumentation output parser.
+
+## 0.2.1 final verification — 2026-11-04
+- Supersedes pending CI notes above: run 41801468947 passed build and both Android jobs; 125 JVM tests verified directly from XML. Both Android logs contain the explicit executed/not-skipped TUN success marker.
+- Standalone installable debug APK extracted from that run and SHA-256 checked; release remains unsigned.

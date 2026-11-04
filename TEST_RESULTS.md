@@ -1,14 +1,14 @@
-# NonRoot Firewall 0.2.0-dev — επαλήθευση
+# NonRoot Firewall 0.2.1-dev — επαλήθευση
 
 Ημερομηνία: 4 Νοεμβρίου 2026.
 
 ## Λήψεις
 
-- [APKs (ZIP)](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41753223859/artifacts/13286018519)
-- [JVM/lint reports](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41753223859/artifacts/13287475815)
-- [Android 10 reports](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41753223859/artifacts/13286969119)
-- [Android 15 reports](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41753223859/artifacts/13286993921)
-- [Πλήρες CI run](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41753223859)
+- [APKs (ZIP)](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41801468947/artifacts/13307608899)
+- [JVM/lint reports](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41801468947/artifacts/13308037129)
+- [Android 10 reports](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41801468947/artifacts/13307883521)
+- [Android 15 reports](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41801468947/artifacts/13308097555)
+- [Πλήρες CI run](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41801468947)
 
 Μέσα στο APK ZIP, η εγκαταστάσιμη εφαρμογή είναι:
 `app/build/outputs/apk/debug/app-debug.apk`.
@@ -19,18 +19,18 @@
 
 | Έλεγχος | Αποτέλεσμα |
 |---|---|
-| JVM unit/integration | 112 επιτυχίες, 0 αποτυχίες/παραλείψεις |
+| JVM unit/integration | 125 επιτυχίες, 0 αποτυχίες/παραλείψεις |
 | App lint και όλα τα APK builds στο CI | Επιτυχία |
 | Debug signature και APK ZIP integrity | Επιτυχία |
 | Android 10 / API 29 | 3 tests χωρίς VPN + 1 εκτελεσμένο πραγματικό TUN test |
 | Android 15 / API 35 | 3 tests χωρίς VPN + 1 εκτελεσμένο πραγματικό TUN test |
-| TCP/UDP TUN με ξεχωριστό UID | Σωστό payload, πραγματικό package attribution |
+| TCP/UDP TUN με ξεχωριστό UID | TCP echo 64 KiB, UDP echo, πραγματικό package attribution |
 | Αλλαγή κανόνα σε ενεργό TCP flow | Η επόμενη μεταφορά αποκλείεται |
 | Άγνωστο UDP flow | Αποκλεισμός και καταχώρηση στο Pending |
 | IPv6 TCP/UDP | Πραγματικά JVM loopback integration tests |
 | Αναμονή ACK | Regression test αποκλείει busy-wait / αδιάκοπα policy lookups |
 
-Ελεγμένο commit: `d5aa925c97f4facffc73d75e5ba10809bcdaefd3`.
+Ελεγμένο commit: `22e74810ee6669402550062489a8c8d1e55de5db`.
 Το explicit VPN test δεν θεωρείται επιτυχημένο αν παραλειφθεί: το CI ελέγχει
 τα JUnit XML και απαιτεί ακριβώς ένα executed/passing result χωρίς skip/error.
 Η παράλειψη στην προηγούμενη έκδοση του API 35 test διορθώθηκε και δεν αποτελεί
@@ -41,6 +41,15 @@ IP packets πριν το `Builder.establish()`. Αποτυχία αποτρέπ�
 Η πραγματική TUN δοκιμή χρησιμοποιεί χωριστή εφαρμογή probe με άλλο UID·
 κίνηση του ίδιου του VPN app δεν αρκεί ως απόδειξη interception.
 Δεν ενεργοποιήθηκε VPN σε φυσική συσκευή του χρήστη.
+
+## Νέα επαλήθευση 0.2.1-dev
+
+MSS negotiation και bounded TCP option parsing, με απόρριψη malformed options.
+Διορθώθηκε cumulative ACK processing σε αμφίδρομη μεταφορά: παλαιότερα ACKs
+δεν απορρίπτουν έγκυρο upload και ACKs μπορούν να προχωρούν ανεξάρτητα από
+την παραλαβή ordered payload. Δύο regression tests αποτυγχάνουν στον προηγούμενο
+κώδικα και περνούν στη διόρθωση. Τοπικά: 20 transport tests επιτυχία.
+Το CI επιβεβαίωσε 64 KiB TCP echo και πραγματικό TCP REPLY στο TUN και στα δύο APIs.
 
 ## Υλοποιημένα
 
@@ -76,8 +85,8 @@ adb shell -T "run-as com.nonroot.firewall sh -c 'cat > shared_prefs/firewall_rul
 ## Όρια και υπολειπόμενοι έλεγχοι
 
 Development build, όχι ακόμη production certification σε φυσική συσκευή.
-Ο TCP endpoint είναι συντηρητικός stop-and-wait με response segments 536 bytes:
-το throughput είναι περιορισμένο. Δεν υλοποιούνται fragments, IPv4 options,
+Ο TCP endpoint είναι συντηρητικός stop-and-wait με negotiated MSS έως 1460 bytes
+IPv4 / 1440 IPv6 (defaults 536/1220 όταν απουσιάζει MSS). Το throughput παραμένει περιορισμένο. Δεν υλοποιούνται fragments, IPv4 options,
 IPv6 extension headers/jumbograms, ICMP path-MTU synthesis ή zero-window
 persistence probes· μη υποστηριζόμενη κίνηση απορρίπτεται. Μεγάλα fragmented
 DNS replies μπορεί να αποτύχουν. DNS/DoT/DoH δεν αποκτούν αυτόματο bypass.
@@ -94,12 +103,12 @@ DNS replies μπορεί να αποτύχουν. DNS/DoT/DoH δεν αποκτ�
 αφαιρέσει το VPN μετά από process death απαιτεί το Android lockdown· το app μόνο
 του δεν τον εγγυάται. Πλήρεις τεχνικές λεπτομέρειες: [VALIDATION.md](VALIDATION.md).
 
-Το τοπικό περιβάλλον αποσυνδέθηκε μετά την επιτυχή τοπική επαλήθευση. Τα τελικά
-APKs και reports παραδόθηκαν από το CI ως τα παραπάνω GitHub artifacts.
+Το τελικό debug APK λήφθηκε από το επιτυχές CI και επαληθεύτηκε το SHA-256 του.
+Τα APKs και reports διατίθενται επίσης ως τα παραπάνω GitHub artifacts.
 
 ## SHA-256 των CI APKs
 
 ```text
-cd70004218ab177132b32a7de5160cb5e5556f682491c94a427e75bc10f8554e  app/build/outputs/apk/debug/app-debug.apk
-f43471705173c438bbe8ccc9d5fefb6f1ea9580b95f270cf5f27b6c1bcbdb944  app/build/outputs/apk/release/app-release-unsigned.apk
+e6dbff56dd20e6da3353dcad6af30f6f342a3fb27007f08e635f1166845e9cec  app/build/outputs/apk/debug/app-debug.apk
+6dfe1af41c236104ed634d5536ec84a6dedf282c7906476b4e3128372799f2d7  app/build/outputs/apk/release/app-release-unsigned.apk
 ```
