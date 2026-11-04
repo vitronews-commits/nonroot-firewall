@@ -135,25 +135,32 @@ class ProbeInstrumentation : Instrumentation() {
                         result.putString("status",if(cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)==true) "VPN" else "NO_VPN")
                         result.putBoolean("lockdown",dpm.isAlwaysOnVpnLockdownEnabled(admin))
                     }
-                    "lockdown_probe" -> {
+                    "lockdown_control", "lockdown_probe" -> {
                         check(token.length in 16..64 && token.all { it.isLetterOrDigit() })
                         val packet=("lockdown-"+token).toByteArray()
                         var attempts=0; var denied=0; var escaped=false
-                        DatagramSocket().use { socket ->
-                            socket.soTimeout=5
-                            sendStatus(0,Bundle().apply { putString("phase","READY") })
-                            val deadline=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(12)
-                            while(android.os.SystemClock.elapsedRealtimeNanos()<deadline) {
-                                attempts++
-                                try {
+                        sendStatus(0,Bundle().apply { putString("phase","READY") })
+                        val deadline=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(if(mode=="lockdown_control") 3 else 12)
+                        while(android.os.SystemClock.elapsedRealtimeNanos()<deadline) {
+                            attempts++
+                            // Recreate the FD on every attempt: a socket bound to the dead VPN
+                            // cannot prove that newly opened connections are blocked by lockdown.
+                            try {
+                                DatagramSocket().use { socket ->
+                                    socket.soTimeout=10
                                     socket.send(DatagramPacket(packet,packet.size,InetSocketAddress("10.0.2.2",28084)))
                                     val answer=DatagramPacket(ByteArray(128),128)
-                                    try { socket.receive(answer); escaped=true; break } catch(_: SocketTimeoutException) { }
-                                } catch(e: java.io.IOException) { if(permissionDenied(e)) denied++ else throw e }
-                                Thread.sleep(10)
-                            }
+                                    try {
+                                        socket.receive(answer)
+                                        check(answer.data.copyOf(answer.length).contentEquals(packet))
+                                        escaped=true
+                                    } catch(_: SocketTimeoutException) { }
+                                }
+                            } catch(e: java.io.IOException) { if(permissionDenied(e)) denied++ else throw e }
+                            if(escaped) break
+                            Thread.sleep(10)
                         }
-                        check(attempts>=100) { "Insufficient process-death probes: $attempts" }
+                        if(mode=="lockdown_probe") check(attempts>=100) { "Insufficient process-death probes: $attempts" }
                         result.putString("status",if(escaped) "ESCAPED" else "BLOCKED")
                         result.putString("metrics","attempts=$attempts denied=$denied uid=${android.os.Process.myUid()}")
                     }

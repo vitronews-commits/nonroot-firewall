@@ -1,3 +1,39 @@
+# 0.3.0-dev candidate validation addendum
+
+This addendum supersedes historical stop-and-wait descriptions below. The engine
+now has bounded sliding-window response forwarding (up to 64 KiB / 128 records),
+32 KiB upload buffering and 64 total flows. It negotiates neither window scaling
+nor SACK. It is a constrained proxy endpoint, not a complete production TCP/IP stack.
+
+Per-flow atomic leases close the late-response/tuple-reuse race. Authorization
+is rechecked at actual upstream I/O and return delivery; no UID TTL cache grants
+access. Rule changes invalidate active sessions. Bytes already accepted into OS
+network buffers cannot be recalled. Unknown/shared/package-less ownership remains
+denied, including the observed API 29 system DNS UID 1051.
+
+Both IP default routes remain captured during underlying-network changes; an
+unavailable network closes the forwarding gate. Replacement TUN establishment
+precedes old descriptor release. This does not substitute for Android Always-on
+and lockdown when the process dies. Tests must verify those platform mechanisms.
+
+IPv4 fragments, IPv6 extension headers and unsupported transport traffic are
+dropped. Oversized permitted UDP can receive synthesized ICMP fragmentation-needed
+or ICMPv6 Packet Too Big; this is not general ICMP forwarding, complete end-to-end
+PMTU discovery or NAT64 validation. DoT/DoH/QUIC use the same app policy as other
+TCP/UDP, but complete TLS/HTTP3 protocol compatibility has not been demonstrated.
+
+Strict rule loading fails closed on corrupt data. Ordinary saves refuse to replace
+corrupt policy; validated explicit import can repair it atomically. UI preferences
+and five tabs remain. A routing-established flag distinguishes a captured closed
+TUN from an early bootstrap error.
+
+See TEST_RESULTS.md for PASS / FAIL / NOT TESTED evidence. Physical Xiaomi/HyperOS,
+real IPv6-only/DNS64/NAT64, external leak capture and battery behavior remain required.
+
+---
+
+## Historical validation record
+
 # NonRoot Firewall 0.2.1-dev — verification and limits
 
 This is a development build, not a verified production firewall. The engine is

@@ -21,8 +21,8 @@ def adb(*args, timeout=30):
     return result.stdout.strip()
 
 
-def probe(mode):
-    result = adb("shell", "am", "instrument", "-w", "-e", "mode", mode, PROBE)
+def probe(mode, token=None):
+    result = adb("shell", "am", "instrument", "-w", "-e", "mode", mode, "-e", "token", token or uuid.uuid4().hex, PROBE)
     if "status=ERROR" in result or "INSTRUMENTATION_CODE: -1" not in result:
         raise RuntimeError(result)
     return result
@@ -44,10 +44,17 @@ root_result = adb("root")
 if "cannot run as root" in root_result:
     raise SystemExit("Rootable emulator required to inject process death, test not executed")
 adb("wait-for-device")
-adb("install", "-r", "app/build/outputs/apk/debug/app-debug.apk")  # UTP removes the tested target APK.
+if adb("shell", "pm", "path", FIREWALL):
+    raise SystemExit("Refusing to overwrite existing firewall installation/data; use a fresh emulator")
+adb("install", "-t", "app/build/outputs/apk/debug/app-debug.apk")  # UTP removes the tested target APK.
 owner = False
 process = None
 try:
+    before = uuid.uuid4().hex
+    if "status=ESCAPED" not in probe("lockdown_control", before):
+        raise RuntimeError("No-VPN positive control cannot reach the external sink")
+    if "LOCKDOWN_LEAK " + before not in Path("/tmp/firewall-echo.log").read_text():
+        raise RuntimeError("Missing external positive-control evidence")
     result = adb("shell", "dpm", "set-device-owner", ADMIN)
     if "Success" not in result:
         raise RuntimeError(result)
@@ -83,6 +90,14 @@ try:
     recovered_pid = adb("shell", "pidof", FIREWALL)
     if not recovered_pid.isdigit() or recovered_pid == original_pid:
         raise RuntimeError("VPN did not recover as a new process")
+    if "status=OK" not in probe("lockdown_off"):
+        raise RuntimeError("Unable to remove lockdown for positive control")
+    adb("shell", "am", "force-stop", FIREWALL)
+    after = uuid.uuid4().hex
+    if "status=ESCAPED" not in probe("lockdown_control", after):
+        raise RuntimeError("Post-test no-VPN control cannot reach sink")
+    if "LOCKDOWN_LEAK " + after not in Path("/tmp/firewall-echo.log").read_text():
+        raise RuntimeError("Missing post-test external positive-control evidence")
     report = {"result": "PASS", "test": "Always-on lockdown / process death / separate UID UDP", "old_pid": original_pid, "new_pid": recovered_pid, "external_sink_packets": 0, "probe": output}
     destination = Path("app/build/acceptance-reports/lockdown.json")
     destination.parent.mkdir(parents=True, exist_ok=True)

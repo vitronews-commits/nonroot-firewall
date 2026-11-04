@@ -516,3 +516,12 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - API 35 completed load and reached Wi-Fi return, but merely enabling the radio did not reassociate the emulator SSID. Explicit test-only AndroidWifi reassociation added; no production network preference override.
 - Superseded intermediate emulator workflows are cancelled to free CI slots. Keep the latest source and the already-running sleep-aware 60-minute engine sample (41818439830); no unfinished soak is counted as passing.
 - Maintenance workflow is temporary development scaffolding, not an app feature.
+
+## 2026-11-04 — independent lockdown evidence
+
+- Run lockdown acceptance independently from network compatibility assertions; otherwise an unrelated mobile DNS failure prevents process-death testing entirely.
+- Create a new probe UDP socket for every attempt across process death. A socket retained from the old VPN is insufficient evidence for lockdown of newly opened connections.
+- Require external-sink positive controls before and after the test. Refuse installation over existing firewall app data even on an emulator.
+- Exact retained soak evidence from source 72b4f55: 3,605,281 ms, 42,532,864 TCP bytes plus UDP echoes, engine CPU 49,528 ms, PSS before/after 120,327/48,537 KiB. Screen off with a test-only partial wake lock. The encompassing JUnit test FAILED later on DNS Pending; this is not a complete soak acceptance PASS or a battery/Doze result.
+
+- Verification update: 16d9448 build job 126668784317 passed 162 JVM tests with zero failures/errors/skips and all 125 baseline IDs. Lint, debug/release/test/probe builds and debug signature passed. Emulator jobs are separate and pending.
