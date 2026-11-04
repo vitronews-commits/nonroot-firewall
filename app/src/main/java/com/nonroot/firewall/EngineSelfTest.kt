@@ -33,7 +33,7 @@ object EngineSelfTest {
             ServerSocket(0,1,loop).use { server ->
                 server.soTimeout=3000
                 val h=PacketParser.Header("10.23.0.2","127.0.0.1",6,43002,server.localPort,false)
-                check(engine.accept(TransportPacket.build(h,byteArrayOf(),100,0,TcpProxySession.SYN)))
+                check(engine.accept(TransportPacket.build(h,byteArrayOf(),100,0,TcpProxySession.SYN,maximumSegmentSize=1460)))
                 val peer=try { server.accept() } catch(e: Exception) {
                     val failure=errors.peek()
                     throw IllegalStateException("TCP preflight accept: " + (failure?.let { it.javaClass.simpleName+": "+it.message } ?: e.message),failure ?: e)
@@ -41,7 +41,7 @@ object EngineSelfTest {
                 peer.use { accepted ->
                     accepted.soTimeout=3000
                     val syn=TransportPacket.parse(checkNotNull(replies.poll(3,TimeUnit.SECONDS)))!!
-                    check(syn.flags==18 && syn.acknowledgement==101L && syn.header==TransportPacket.reverse(h))
+                    check(syn.flags==18 && syn.acknowledgement==101L && syn.header==TransportPacket.reverse(h) && syn.maximumSegmentSize==1460)
                     val serverSeq=TcpProxySession.add(syn.sequence,1)
                     check(engine.accept(TransportPacket.build(h,payload,101,serverSeq,24)))
                     val bytes=ByteArray(payload.size)

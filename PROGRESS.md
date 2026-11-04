@@ -10,6 +10,15 @@
 - Debug APK is installable; release APK is intentionally unsigned. Downloads and checksums: [TEST_RESULTS.md](TEST_RESULTS.md).
 - **Remaining physical/release acceptance:** Redmi 13C network switching/Doze/reboot/lockdown, external DNS/IPv6 leak capture, throughput/long-transfer checks, and a persistent private release signing key. Conservative TCP and unsupported fragment/extension limits are explicit in VALIDATION.md; no production-certification claim.
 
+## TCP MSS continuation — 2026-11-04 (0.2.1-dev; CI pending)
+
+- Implemented bounded TCP option traversal and SYN-only MSS parsing; malformed, zero, duplicate and out-of-bounds MSS options fail closed.
+- SYN-ACK advertises the tunnel receive MSS. Downstream data honors the peer MSS and MTU: up to 1460 bytes IPv4 / 1440 IPv6, with RFC defaults 536/1220 when omitted. Stop-and-wait remains; no sliding-window throughput claim.
+- Runtime protected preflight now verifies MSS negotiation before TUN establishment. Separate-UID Android probe transfers 64 KiB over TCP and verifies all returned bytes; UDP remains a separate small datagram test.
+- Local standalone JVM transport suite passed (codec and real TCP socket tests); full Android build, full regression suite and API 29/35 actual TUN checks are pending CI.
+- Version code 3 / version 0.2.1-dev. Existing UI, preferences and production socket-protection gates retained.
+- Protocol reference: RFC 9293 §3.7.1 (https://www.rfc-editor.org/rfc/rfc9293.html#section-3.7.1).
+
 ## Historical scaffold record (superseded by current status)
 
 ## Locked requirements

@@ -6,7 +6,7 @@ import java.net.InetAddress
 object TransportPacket {
     data class Packet(val header: PacketParser.Header, val payload: ByteArray,
                       val sequence: Long = 0, val acknowledgement: Long = 0,
-                      val flags: Int = 0, val window: Int = 0)
+                      val flags: Int = 0, val window: Int = 0, val maximumSegmentSize: Int? = null)
     fun u16(b: ByteArray, i: Int) = ((b[i].toInt() and 255) shl 8) or (b[i+1].toInt() and 255)
     private fun u32(b: ByteArray, i: Int) = ((u16(b,i).toLong() shl 16) or u16(b,i+2).toLong())
     fun put16(b: ByteArray, i: Int, v: Int) { b[i]=(v ushr 8).toByte(); b[i+1]=v.toByte() }
@@ -46,17 +46,37 @@ object TransportPacket {
         }
         val tcpSize=((b[offset+12].toInt() ushr 4) and 15)*4
         if(tcpSize<20 || tcpSize>size) return null
-        return Packet(h,b.copyOfRange(offset+tcpSize,total),u32(b,offset+4),u32(b,offset+8),b[offset+13].toInt() and 255,u16(b,offset+14))
+        val flags=b[offset+13].toInt() and 255
+        var mss: Int?=null
+        var cursor=offset+20
+        val optionsEnd=offset+tcpSize
+        while(cursor<optionsEnd) {
+            val kind=b[cursor].toInt() and 255
+            if(kind==0) break // End of options; padding is not another option.
+            if(kind==1) { cursor++; continue }
+            if(cursor+2>optionsEnd) return null
+            val length=b[cursor+1].toInt() and 255
+            if(length<2 || cursor+length>optionsEnd) return null
+            if(kind==2) {
+                if(length!=4 || flags and 2==0 || mss!=null) return null
+                mss=u16(b,cursor+2).takeIf { it>0 } ?: return null
+            }
+            cursor+=length
+        }
+        return Packet(h,b.copyOfRange(offset+tcpSize,total),u32(b,offset+4),u32(b,offset+8),flags,u16(b,offset+14),mss)
     }
 
     fun build(h: PacketParser.Header, payload: ByteArray, sequence: Long=0,
-              acknowledgement: Long=0, flags: Int=0, window: Int=16384): ByteArray {
+              acknowledgement: Long=0, flags: Int=0, window: Int=16384,
+              maximumSegmentSize: Int?=null): ByteArray {
         val src=InetAddress.getByName(h.source).address
         val dst=InetAddress.getByName(h.destination).address
         require(src.size==dst.size && h.protocol in listOf(6,17))
         require(h.sourcePort in 1..65535 && h.destinationPort in 1..65535)
         val offset=if(src.size==4) 20 else 40
-        val transport=if(h.protocol==6) 20 else 8
+        require(maximumSegmentSize==null ||
+            (h.protocol==6 && flags and 2!=0 && maximumSegmentSize in 1..65535))
+        val transport=if(h.protocol==6) { if(maximumSegmentSize!=null) 24 else 20 } else 8
         val b=ByteArray(offset+transport+payload.size)
         require(b.size<=1500)
         if(offset==20) {
@@ -70,7 +90,11 @@ object TransportPacket {
         put16(b,offset,h.sourcePort!!); put16(b,offset+2,h.destinationPort!!)
         if(h.protocol==6) {
             put32(b,offset+4,sequence); put32(b,offset+8,acknowledgement)
-            b[offset+12]=0x50; b[offset+13]=flags.toByte(); put16(b,offset+14,window)
+            b[offset+12]=((transport/4) shl 4).toByte(); b[offset+13]=flags.toByte(); put16(b,offset+14,window)
+            if(maximumSegmentSize!=null) {
+                b[offset+20]=2; b[offset+21]=4
+                put16(b,offset+22,maximumSegmentSize)
+            }
         } else put16(b,offset+4,transport+payload.size)
         payload.copyInto(b,offset+transport)
         val checksum=fold(sum(b,offset,b.size,pseudo(b,offset,b.size-offset,h.protocol))).inv() and 65535

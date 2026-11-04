@@ -1,4 +1,4 @@
-# NonRoot Firewall 0.2.0-dev — verification and limits
+# NonRoot Firewall 0.2.1-dev — verification and limits
 
 This is a development build, not a verified production firewall. The engine is
 connected to VpnService; Android device-level TUN, routing and leak validation
@@ -35,8 +35,9 @@ must be distinguished from passing off-tunnel socket tests.
 - MTU 1500. IPv4 options, fragmentation and IPv6 extension headers/jumbograms
   are not implemented and are dropped. Large fragmented DNS replies can fail;
   there is no synthesized ICMP/ICMPv6 Packet Too Big or DNS truncation response.
-- TCP uses a conservative stop-and-wait endpoint with 536-byte upstream-to-app
-  segments, duplicate/out-of-order rejection, retransmission, half-close/reset,
+- TCP uses a conservative stop-and-wait endpoint with negotiated MSS,
+  bounded by the TUN MTU (1460 bytes IPv4 / 1440 IPv6). If the client omits
+  MSS, default send limits are 536 bytes IPv4 / 1220 IPv6. It supports duplicate/out-of-order rejection, retransmission, half-close/reset,
   and sequence wrap arithmetic. It does not negotiate SACK/window scaling,
   implement full congestion control or implement zero-window persistence probes.
   Throughput and compatibility are limited. This is not a mature full TCP stack.

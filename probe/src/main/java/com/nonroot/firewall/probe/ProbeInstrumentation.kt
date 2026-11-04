@@ -27,21 +27,22 @@ class ProbeInstrumentation : Instrumentation() {
         var stage="initial"
         try {
             val payload="separate-UID-through-TUN".toByteArray()
+            val tcpPayload=if(mode=="allow") ByteArray(65536) { (it*37).toByte() } else payload
             if(mode=="allow" || mode=="tcp_hold") {
                 Socket().use { tcp ->
                     stage="tcp-connect"
-                    tcp.soTimeout=4000; tcp.connect(InetSocketAddress("10.0.2.2",28080),5000)
+                    tcp.soTimeout=15000; tcp.connect(InetSocketAddress("10.0.2.2",28080),5000)
                     stage="tcp-first-echo"
-                    tcp.getOutputStream().write(payload)
-                    val bytes=ByteArray(payload.size)
+                    tcp.getOutputStream().write(tcpPayload)
+                    val bytes=ByteArray(tcpPayload.size)
                     java.io.DataInputStream(tcp.getInputStream()).readFully(bytes)
-                    check(bytes.contentEquals(payload)) { "TCP payload mismatch" }
+                    check(bytes.contentEquals(tcpPayload)) { "TCP payload mismatch" }
                     if(mode=="tcp_hold") {
                         sendStatus(0,Bundle().apply { putString("phase","READY") })
                         Thread.sleep(1500)
                         stage="tcp-after-revoke"
                         try {
-                            tcp.getOutputStream().write(payload)
+                            tcp.getOutputStream().write(tcpPayload)
                             result.putString("status",if(tcp.getInputStream().read()<0) "BLOCKED" else "ESCAPED")
                         } catch(_: SocketTimeoutException) { result.putString("status","BLOCKED") }
                         catch(_: java.net.SocketException) { result.putString("status","BLOCKED") }

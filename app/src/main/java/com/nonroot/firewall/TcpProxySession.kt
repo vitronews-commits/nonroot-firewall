@@ -44,14 +44,17 @@ class TcpProxySession(
     private var sentAt=0L
     private var retries=0
     private val reverse=TransportPacket.reverse(initial.header)
+    private val receiveMss=if(':' in initial.header.source) 1440 else 1460
+    private val sendMss=minOf(initial.maximumSegmentSize ?: if(':' in initial.header.source) 1220 else 536,receiveMss)
 
-    init { require(initial.flags and 0x3f==SYN && initial.payload.isEmpty()); require(idleMs>=1000) }
+    init { require(initial.flags and 0x3f==SYN && initial.payload.isEmpty()); require(idleMs>=1000); require(initial.maximumSegmentSize==null || initial.maximumSegmentSize in 1..65535) }
     fun offer(packet: TransportPacket.Packet): Boolean = !closed.get() && incoming.offer(packet)
     fun isClosed()=closed.get()
     private fun now()=System.nanoTime()/1_000_000
     private fun emit(payload: ByteArray=byteArrayOf(), flags: Int=ACK, tracked: Boolean=false) {
         if(closed.get() || !permitted()) return
-        val bytes=TransportPacket.build(reverse,payload,serverNext,clientNext,flags)
+        val bytes=TransportPacket.build(reverse,payload,serverNext,clientNext,flags,
+            maximumSegmentSize=if(flags and SYN!=0) receiveMss else null)
         if(tracked) {
             serverNext=add(serverNext,payload.size+if(flags and (SYN or FIN)!=0) 1 else 0)
             outstanding=bytes; outstandingEnd=serverNext; sentAt=now(); retries=0
@@ -69,7 +72,7 @@ class TcpProxySession(
             upstream.connect(InetSocketAddress(initial.header.destination,initial.header.destinationPort!!),5000)
             upstream.soTimeout=50
             emit(flags=SYN or ACK,tracked=true)
-            val buffer=ByteArray(536)
+            val buffer=ByteArray(sendMss)
             while(!closed.get() && permitted()) {
                 if((System.nanoTime()-lastActivity)/1_000_000>=idleMs) break
                 repeat(32) { incoming.poll()?.let { process(it,upstream) } }

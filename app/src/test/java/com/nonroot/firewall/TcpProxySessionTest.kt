@@ -11,11 +11,11 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
 class TcpProxySessionTest {
-    private class Fixture : Closeable {
-        val server=ServerSocket(0,1,InetAddress.getByName("127.0.0.1")).apply { soTimeout=3000 }
-        val header=PacketParser.Header("10.23.0.2","127.0.0.1",6,40000,server.localPort,false)
+    private class Fixture(private val mss: Int?=null, private val ipv6: Boolean=false) : Closeable {
+        val server=ServerSocket(0,1,InetAddress.getByName(if(ipv6) "::1" else "127.0.0.1")).apply { soTimeout=3000 }
+        val header=PacketParser.Header(if(ipv6) "fd23:23::2" else "10.23.0.2",if(ipv6) "::1" else "127.0.0.1",6,40000,server.localPort,false)
         val replies=LinkedBlockingQueue<ByteArray>()
-        val initial=TransportPacket.Packet(header,byteArrayOf(),100,0,2,16384)
+        val initial=TransportPacket.Packet(header,byteArrayOf(),100,0,2,16384,mss)
         val session=TcpProxySession(initial,{ Socket() },{ replies.offer(it) },{ true },3000,500)
         val thread=Thread { session.run() }.apply { start() }
         val peer=server.accept().apply { soTimeout=1000 }
@@ -26,6 +26,35 @@ class TcpProxySessionTest {
         }
         fun handshake() { send(101,501) }
         override fun close() { session.close(); peer.close(); server.close(); thread.join(2000); assertFalse(thread.isAlive) }
+    }
+    @Test fun negotiatedMssPreservesLargeTransfersAndHonorsMtu() {
+        for(v6 in listOf(false,true)) for(mss in listOf(128,1460,65535)) {
+            Fixture(mss,v6).use { f ->
+                assertEquals(if(v6) 1440 else 1460,f.syn.maximumSegmentSize)
+                f.handshake()
+                val data=ByteArray(8192) { (it*31).toByte() }
+                f.peer.getOutputStream().write(data)
+                val received=java.io.ByteArrayOutputStream()
+                var expected=501L
+                while(received.size()<data.size) {
+                    val p=f.next()
+                    assertEquals(expected,p.sequence)
+                    assertTrue(p.payload.size<=minOf(mss,if(v6) 1440 else 1460))
+                    assertTrue(p.payload.isNotEmpty())
+                    received.write(p.payload)
+                    expected=TcpProxySession.add(expected,p.payload.size)
+                    f.send(101,expected)
+                }
+                assertArrayEquals(data,received.toByteArray())
+            }
+        }
+    }
+    @Test fun defaultMssMatchesIpFamilyWhenNotAdvertised() {
+        for(v6 in listOf(false,true)) Fixture(ipv6=v6).use { f ->
+            f.handshake(); f.peer.getOutputStream().write(ByteArray(2000))
+            val p=f.next()
+            assertEquals(if(v6) 1220 else 536,p.payload.size)
+        }
     }
     @Test fun duplicateClientDataIsNotWrittenTwice() {
         Fixture().use { f ->
