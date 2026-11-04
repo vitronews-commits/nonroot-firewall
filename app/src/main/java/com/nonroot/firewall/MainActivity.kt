@@ -492,14 +492,29 @@ class MainActivity : Activity() {
 
 
     private fun startFirewall() {
-        startForegroundService(Intent(this, FirewallVpnService::class.java))
-        mainHandler.postDelayed({ if (!isFinishing) render() }, 500)
+        EngineEvents.status = "STARTING — launching VPN service"
+        EngineEvents.record(null, "START: launching foreground VPN service")
+        try {
+            startForegroundService(Intent(this, FirewallVpnService::class.java))
+        } catch (e: Exception) {
+            EngineEvents.status = "ERROR — service launch: ${e.javaClass.simpleName}: ${e.message}"
+            EngineEvents.record(null, EngineEvents.status)
+            Toast.makeText(this, EngineEvents.status, Toast.LENGTH_LONG).show()
+        }
+        if (!isFinishing) render()
     }
 
     @Deprecated("Platform activity result compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 701 && resultCode == RESULT_OK) startFirewall()
+        if (requestCode == 701) {
+            EngineEvents.record(null, "VPN permission result: $resultCode")
+            if (resultCode == RESULT_OK) startFirewall()
+            else {
+                EngineEvents.status = "ERROR — VPN permission denied or cancelled"
+                render()
+            }
+        }
     }
 
     private fun pendingScreen() {
@@ -548,9 +563,24 @@ class MainActivity : Activity() {
         box.addView(Button(this).apply {
             text = "START"; textSize = 26f
             setOnClickListener {
-                val consent = android.net.VpnService.prepare(this@MainActivity)
-                if (consent != null) startActivityForResult(consent, 701)
-                else startFirewall()
+                EngineEvents.status = "STARTING — checking VPN permission"
+                EngineEvents.record(null, "START button pressed")
+                try {
+                    val consent = android.net.VpnService.prepare(this@MainActivity)
+                    if (consent != null) {
+                        EngineEvents.status = "WAITING — Android VPN permission"
+                        EngineEvents.record(null, "VPN consent activity requested")
+                        startActivityForResult(consent, 701)
+                    } else {
+                        EngineEvents.record(null, "VPN permission already granted")
+                        startFirewall()
+                    }
+                } catch (e: Exception) {
+                    EngineEvents.status = "ERROR — VPN permission: ${e.javaClass.simpleName}: ${e.message}"
+                    EngineEvents.record(null, EngineEvents.status)
+                    Toast.makeText(this@MainActivity, EngineEvents.status, Toast.LENGTH_LONG).show()
+                }
+                statusView?.text = statusText()
             }
         }, LinearLayout.LayoutParams(dp(150), dp(100)))
         box.addView(TextView(this).apply {
