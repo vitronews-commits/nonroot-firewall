@@ -25,6 +25,8 @@ jobs:
           gradle-version: '8.9'
       - name: Unit, transport integration, lint and APK builds
         run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleAndroidTest :probe:assembleDebug --stacktrace
+      - name: Verify retained regression baseline and actual JVM execution
+        run: python3 tools/verify_unit_results.py app/build/test-results/testDebugUnitTest
       - name: Verify APK integrity and debug signature
         run: |
           test -s app/build/outputs/apk/debug/app-debug.apk
@@ -83,6 +85,7 @@ jobs:
           script: |
             adb shell settings put global captive_portal_mode 0
             adb shell settings put global private_dns_mode off
+            adb shell svc data disable
             gradle :app:connectedDebugAndroidTest --stacktrace
             mkdir -p app/build/acceptance-reports/offline
             cp -R app/build/outputs/androidTest-results app/build/acceptance-reports/offline/
@@ -143,6 +146,7 @@ jobs:
           script: |
             adb shell settings put global captive_portal_mode 0
             adb shell settings put global private_dns_mode off
+            adb shell svc data disable
             gradle :app:connectedDebugAndroidTest :probe:assembleDebug --stacktrace
             adb install -r -t probe/build/outputs/apk/debug/probe-debug.apk
             adb shell am instrument -w -e mode direct_socket com.nonroot.firewall.probe/.ProbeInstrumentation > /tmp/direct-socket.txt

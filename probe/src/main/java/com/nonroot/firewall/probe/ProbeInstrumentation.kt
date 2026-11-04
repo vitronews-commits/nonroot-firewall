@@ -12,6 +12,7 @@ import java.net.SocketTimeoutException
 /** Separate UID is essential: a VPN's own UID does not prove packet interception. */
 class ProbeInstrumentation : Instrumentation() {
     private var mode="allow"
+    private fun allowedMode()=mode in listOf("allow","allow_mobile")
     private var durationSeconds=0
     private var token=""
     private var completed=0L
@@ -160,6 +161,14 @@ class ProbeInstrumentation : Instrumentation() {
                 }
                 finish(Activity.RESULT_OK,result); return
             }
+            if(mode=="dns_block") {
+                val name="blocked-"+java.util.UUID.randomUUID().toString().replace("-","")+".firewall-test.invalid"
+                try {
+                    java.net.InetAddress.getAllByName(name)
+                    result.putString("status","ESCAPED")
+                } catch(_: java.net.UnknownHostException) { result.putString("status","BLOCKED") }
+                finish(Activity.RESULT_OK,result); return
+            }
             if(mode in listOf("direct_socket","direct_channel")) {
                 check(android.os.Build.HARDWARE in listOf("ranchu","goldfish"))
                 stage="direct-system-dns"
@@ -199,8 +208,8 @@ class ProbeInstrumentation : Instrumentation() {
                 result.putString("metrics","mode=$mode bytes=$completed concurrentConnections=${if(mode=="stress") 4 else 1} elapsedMs=${(android.os.SystemClock.elapsedRealtimeNanos()-started)/1000000} cpuMs=${android.os.Process.getElapsedCpuTime()-cpu} pssBeforeKiB=$pssBefore pssAfterKiB=${android.os.Debug.getPss()}")
                 finish(Activity.RESULT_OK,result); return
             }
-            val tcpPayload=if(mode=="allow") ByteArray(65536) { (it*37).toByte() } else payload
-            if(mode=="allow" || mode=="tcp_hold") {
+            val tcpPayload=if(allowedMode()) ByteArray(65536) { (it*37).toByte() } else payload
+            if(allowedMode() || mode=="tcp_hold") {
                 Socket().use { tcp ->
                     stage="tcp-connect"
                     tcp.soTimeout=15000; tcp.connect(InetSocketAddress("10.0.2.2",28080),5000)
@@ -226,12 +235,14 @@ class ProbeInstrumentation : Instrumentation() {
                     }
                 }
             }
-            if(mode=="allow") {
+            if(allowedMode()) {
                 stage="system-dns"
-                check(java.net.InetAddress.getAllByName("firewall-test.invalid").any { it.hostAddress=="192.0.2.123" }) { "System DNS through app policy failed" }
+                val dnsName=if(mode=="allow_mobile") "example.com" else "firewall-test.invalid"
+                val addresses=java.net.InetAddress.getAllByName(dnsName)
+                check(if(mode=="allow_mobile") addresses.isNotEmpty() else addresses.any { it.hostAddress=="192.0.2.123" }) { "System DNS through app policy failed" }
                 stage="dns-transports"; dnsTransports()
             }
-            if(mode=="allow" || mode=="udp_block") {
+            if(allowedMode() || mode=="udp_block") {
                 DatagramSocket().use { udp ->
                     udp.soTimeout=3000; udp.connect(InetSocketAddress("10.0.2.2",28081))
                     stage="udp-send"

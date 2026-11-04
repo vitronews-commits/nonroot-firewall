@@ -16,20 +16,20 @@ class RuleEngine(
     fun decide(connection: Connection): Decision {
         require(connection.port in 0..65535)
         // Global UI pre-filters run first. Each filter list uses first-match ordering.
-        val global = ipRules.filter {
+        val global = ipRules.firstOrNull {
             it.packageName == null &&
             (it.network == null || it.network == connection.network) &&
             (it.port == null || it.port == connection.port) &&
             matchesCidr(connection.ip, it.cidr)
         }
-        global.firstOrNull()?.let { return it.decision }
-        val specific = ipRules.filter {
+        global?.let { return it.decision }
+        val specific = ipRules.firstOrNull {
             it.packageName == connection.packageName &&
             (it.network == null || it.network == connection.network) &&
             (it.port == null || it.port == connection.port) &&
             matchesCidr(connection.ip, it.cidr)
         }
-        specific.firstOrNull()?.let { return it.decision }
+        specific?.let { return it.decision }
         appRules.lastOrNull { it.packageName == connection.packageName && it.network == connection.network }
             ?.let { return it.decision }
         appRules.lastOrNull { it.packageName == connection.packageName && it.network == null }

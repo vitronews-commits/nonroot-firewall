@@ -484,3 +484,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Independent no-VPN API 29 Socket returned all 1 MiB then reset too (artifact diagnostic run 41817455053): TUN is not required to reproduce that EOF problem. No reset is accepted by actual TUN half-close assertions.
 - Replaced invalid multi-threaded blocking SocketChannel-adapter control (could serialize reader/writer) with single-owner NIO control. Host fixture keeps FIN-bearing descriptor briefly alive for NAT drain. Direct-control failures are printed as failures without preventing remaining diagnostics; actual TUN acceptance remains strict.
 - Clock reference: https://developer.android.com/reference/android/os/SystemClock .
+
+## Baseline contract and DNS deny acceptance — CI pending
+- Committed exact 125 baseline test IDs extracted from verified run 41801468947. CI rejects missing/skipped/failing cases and reports actual total in verification-summary.json.
+- Unique-name system DNS default-deny probe must fail resolution and create per-app port-53 Pending on supporting OS builds. No generic resolver exception.
+- Lab starts with cellular disabled to prevent default-network switches invalidating isolated DNS control. Handover explicitly enables cellular; mobile DNS requires MOBILE-attributed DNS event, then cellular disables to test Wi-Fi return.
+- Rule evaluation stops at first matching global/application filter without intermediate matching-list allocations; precedence and mutable-list baseline tests retained.

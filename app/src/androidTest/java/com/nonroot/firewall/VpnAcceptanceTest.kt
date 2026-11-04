@@ -111,6 +111,10 @@ class VpnAcceptanceTest {
             assertTrue(unknown.replace("\n"," | "),unknown.contains("status=BLOCKED"))
             assertTrue("Expected exact UDP Pending request: "+EngineEvents.pending.snapshot()+" / "+EngineEvents.snapshot().take(12),
                 EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage && it.connection.ip=="10.0.2.2" && it.connection.port==28081 })
+            val deniedDns=probe("dns_block")
+            assertTrue(deniedDns.replace("\n"," | "),deniedDns.contains("status=BLOCKED"))
+            assertTrue("DNS did not reach exact per-app Pending policy",EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage && it.connection.port==53 })
+            println("TUN_DNS_DEFAULT_DENY PASS")
             // Toggle only emulator networking. Reconnect must rebuild DNS/routes while old TUN blocks.
             assertTrue(appStore.save(listOf(AppRule(probePackage,null,Decision.ALLOW))))
             try {
@@ -120,7 +124,8 @@ class VpnAcceptanceTest {
                 assertNotEquals("Wi-Fi loss callback not observed",NetworkKind.WIFI,EngineEvents.network)
                 if(EngineEvents.network==NetworkKind.MOBILE) {
                     while(EngineEvents.status!="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
-                    val mobile=probe("allow"); assertTrue(mobile.replace("\n"," | "),mobile.contains("status=OK"))
+                    val mobile=probe("allow_mobile"); assertTrue(mobile.replace("\n"," | "),mobile.contains("status=OK"))
+                    assertTrue("Mobile system DNS was not attributed",EngineEvents.snapshot().any { it.connection?.packageName==probePackage && it.connection.port==53 && it.connection.network==NetworkKind.MOBILE && it.result=="QUEUED" })
                     println("TUN_HANDOVER WIFI_TO_MOBILE PASS")
                 } else {
                     while(EngineEvents.status=="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
@@ -128,7 +133,7 @@ class VpnAcceptanceTest {
                     assertTrue(EngineEvents.liveConnections().isEmpty())
                     println("TUN_HANDOVER WIFI_TO_OFFLINE PASS; WIFI_TO_MOBILE NOT_TESTED (no cellular path)")
                 }
-            } finally { shell("svc wifi enable") }
+            } finally { shell("svc wifi enable"); shell("svc data disable") }
             var limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(45)
             while((EngineEvents.network!=NetworkKind.WIFI || EngineEvents.status!="RUNNING") && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
             assertEquals(NetworkKind.WIFI,EngineEvents.network); assertEquals("RUNNING",EngineEvents.status)
@@ -147,7 +152,7 @@ class VpnAcceptanceTest {
             }
             println("TUN_REPEATED_START_STOP PASS")
         } finally {
-            shell("svc wifi enable")
+            shell("svc wifi enable"); shell("svc data disable")
             context.stopService(Intent(context,FirewallVpnService::class.java))
             appStore.save(savedApps); ipStore.save(savedIps)
             shell("appops set ${context.packageName} ACTIVATE_VPN default")
