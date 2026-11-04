@@ -25,6 +25,7 @@ class ProbeInstrumentation : Instrumentation() {
     override fun onStart() {
         val result=Bundle()
         var stage="initial"
+        var received=0
         try {
             val payload="separate-UID-through-TUN".toByteArray()
             val tcpPayload=if(mode=="allow") ByteArray(65536) { (it*37).toByte() } else payload
@@ -35,7 +36,11 @@ class ProbeInstrumentation : Instrumentation() {
                     stage="tcp-first-echo"
                     tcp.getOutputStream().write(tcpPayload)
                     val bytes=ByteArray(tcpPayload.size)
-                    java.io.DataInputStream(tcp.getInputStream()).readFully(bytes)
+                    while(received<bytes.size) {
+                        val count=tcp.getInputStream().read(bytes,received,bytes.size-received)
+                        check(count>=0) { "TCP closed before all echo bytes arrived" }
+                        received+=count
+                    }
                     check(bytes.contentEquals(tcpPayload)) { "TCP payload mismatch" }
                     if(mode=="tcp_hold") {
                         sendStatus(0,Bundle().apply { putString("phase","READY") })
@@ -68,7 +73,7 @@ class ProbeInstrumentation : Instrumentation() {
             }
         } catch(e: Exception) {
             if(mode=="udp_block" && permissionDenied(e)) result.putString("status","BLOCKED")
-            else result.putString("status","ERROR mode=$mode stage=$stage: ${e.javaClass.simpleName}: ${e.message}")
+            else result.putString("status","ERROR mode=$mode stage=$stage received=$received: ${e.javaClass.simpleName}: ${e.message}")
         }
         finish(Activity.RESULT_OK,result)
     }

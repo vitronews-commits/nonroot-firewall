@@ -400,3 +400,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 ## Transport-specific Android evidence — 2026-11-04
 - Strengthened actual TUN acceptance to require separate QUEUED records for TCP port 28080 and UDP port 28081, plus a TCP payload-bearing REPLY written to TUN. A UDP-only event cannot satisfy the large TCP transfer claim.
 - New checks require execution on both API levels; no additional production engine change.
+
+## Full-duplex cumulative ACK reliability — 2026-11-04
+- The 64 KiB actual-TUN test exposed a valid-upload rejection: requiring every ACK to equal the newest send sequence discarded upload bytes carrying an older ACK. Checking receive order before ACK progress also ignored valid response ACKs that crossed earlier upload data.
+- Track the oldest unacknowledged server sequence and process valid cumulative ACK progress independently from ordered payload consumption. Future ACKs remain rejected; old ACKs never clear new outstanding data; receive-window bounds and unsigned wrap checks are retained.
+- Regression proof: the two targeted real-socket tests fail against the preceding TCP implementation, while all 20 local transport tests pass with the fix (13 TCP session / 7 MSS codec). Full project CI pending; expected total 125 JVM tests.
+- Probe failures now include received-byte progress, and nested instrumentation text is flattened in assertion messages to avoid corrupting the outer instrumentation output parser.

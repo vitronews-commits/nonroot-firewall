@@ -61,7 +61,7 @@ class VpnAcceptanceTest {
                 return output.toString()
             }
             val allowed=probe("allow")
-            assertTrue(allowed+"\n"+EngineEvents.snapshot().take(12),allowed.contains("status=OK"))
+            assertTrue(allowed.replace("\n"," | ")+" events="+EngineEvents.snapshot().take(12),allowed.contains("status=OK"))
             val events=EngineEvents.snapshot()
             for(port in listOf(28080,28081)) {
                 assertTrue("Missing real probe transport on port $port: "+events.take(12),events.any {
@@ -78,12 +78,12 @@ class VpnAcceptanceTest {
                 sawReady=true
                 assertTrue(ipStore.save(listOf(IpRule(null,"10.0.2.2/32",null,Decision.BLOCK,28080))))
             }
-            assertTrue("Probe never confirmed an established echo connection: "+revoked,sawReady)
-            assertTrue(revoked,revoked.contains("status=BLOCKED"))
+            assertTrue("Probe never confirmed an established echo connection: "+revoked.replace("\n"," | "),sawReady)
+            assertTrue(revoked.replace("\n"," | "),revoked.contains("status=BLOCKED"))
             assertTrue(appStore.save(emptyList()))
             assertTrue(ipStore.save(emptyList()))
             val unknown=probe("udp_block")
-            assertTrue(unknown,unknown.contains("status=BLOCKED"))
+            assertTrue(unknown.replace("\n"," | "),unknown.contains("status=BLOCKED"))
             assertTrue("Expected exact UDP Pending request: "+EngineEvents.pending.snapshot()+" / "+EngineEvents.snapshot().take(12),
                 EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage && it.connection.ip=="10.0.2.2" && it.connection.port==28081 })
         } finally {

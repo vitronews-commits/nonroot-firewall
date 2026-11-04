@@ -34,6 +34,7 @@ class TcpProxySession(
     @Volatile private var socket: Socket?=null
     private var clientNext=add(initial.sequence,1)
     private var serverNext=initialSequence
+    private var serverAcknowledged=initialSequence
     private var established=false
     private var clientFin=false
     private var remoteFin=false
@@ -107,13 +108,24 @@ class TcpProxySession(
             return
         }
         if(p.flags and ACK==0) return
-        // Only a valid next sequence can update the peer window/ack state.
-        if(p.sequence!=clientNext) { emit(); return }
-        if(p.acknowledgement!=serverNext) { emit(); return }
-        peerWindow=p.window
-        if(outstanding!=null && p.acknowledgement==outstandingEnd) outstanding=null
+        // ACK progress is independent of whether this segment's upload bytes are next.
+        // A client may have sent upload data while its ACK crosses our response.
+        val sequenceDistance=(p.sequence-clientNext) and MASK
+        if(sequenceDistance>=16384L) { emit(); return }
+        val beyondSent=(p.acknowledgement-serverNext) and MASK
+        if(beyondSent in 1L..0x7fffffffL) { emit(); return }
+        if(!established && (p.sequence!=clientNext || p.acknowledgement!=serverNext)) { emit(); return }
+        val acknowledgedDistance=(p.acknowledgement-serverAcknowledged) and MASK
+        val inFlight=(serverNext-serverAcknowledged) and MASK
+        if(acknowledgedDistance<=inFlight) {
+            serverAcknowledged=p.acknowledgement
+            peerWindow=p.window
+            if(outstanding!=null && p.acknowledgement==outstandingEnd) outstanding=null
+        }
         established=true
         lastActivity=System.nanoTime()
+        // Future upload data remains unconsumed; duplicates are never written twice.
+        if(p.sequence!=clientNext) { emit(); return }
         if(p.payload.isNotEmpty()) {
             if(clientFin) { emit(); return }
             upstream.getOutputStream().write(p.payload)

@@ -11,12 +11,12 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
 class TcpProxySessionTest {
-    private class Fixture(private val mss: Int?=null, private val ipv6: Boolean=false) : Closeable {
+    private class Fixture(private val mss: Int?=null, private val ipv6: Boolean=false, private val serverInitial: Long=500) : Closeable {
         val server=ServerSocket(0,1,InetAddress.getByName(if(ipv6) "::1" else "127.0.0.1")).apply { soTimeout=3000 }
         val header=PacketParser.Header(if(ipv6) "fd23:23::2" else "10.23.0.2",if(ipv6) "::1" else "127.0.0.1",6,40000,server.localPort,false)
         val replies=LinkedBlockingQueue<ByteArray>()
         val initial=TransportPacket.Packet(header,byteArrayOf(),100,0,2,16384,mss)
-        val session=TcpProxySession(initial,{ Socket() },{ replies.offer(it) },{ true },3000,500)
+        val session=TcpProxySession(initial,{ Socket() },{ replies.offer(it) },{ true },3000,serverInitial)
         val thread=Thread { session.run() }.apply { start() }
         val peer=server.accept().apply { soTimeout=1000 }
         val syn=next()
@@ -24,7 +24,7 @@ class TcpProxySessionTest {
         fun send(seq: Long, ack: Long, flags: Int=16, payload: ByteArray=byteArrayOf(),window: Int=16384) {
             check(session.offer(TransportPacket.Packet(header,payload,seq,ack,flags,window)))
         }
-        fun handshake() { send(101,501) }
+        fun handshake() { send(101,TcpProxySession.add(serverInitial,1)) }
         override fun close() { session.close(); peer.close(); server.close(); thread.join(2000); assertFalse(thread.isAlive) }
     }
     @Test fun negotiatedMssPreservesLargeTransfersAndHonorsMtu() {
@@ -54,6 +54,50 @@ class TcpProxySessionTest {
             f.handshake(); f.peer.getOutputStream().write(ByteArray(2000))
             val p=f.next()
             assertEquals(if(v6) 1220 else 536,p.payload.size)
+        }
+    }
+    @Test fun uploadWithOlderAckIsAcceptedWhileResponseAwaitsAck() {
+        Fixture().use { f ->
+            f.handshake(); f.peer.getOutputStream().write(byteArrayOf(1))
+            assertEquals(501L,f.next().sequence)
+            f.send(101,501,24,byteArrayOf(9))
+            assertEquals(9,f.peer.getInputStream().read())
+            assertEquals(102L,f.next().acknowledgement)
+            f.send(102,502)
+        }
+    }
+    @Test fun aheadUploadSequenceCanStillAcknowledgeResponse() {
+        Fixture().use { f ->
+            f.handshake(); f.peer.getOutputStream().write(byteArrayOf(1)); f.next()
+            f.send(105,502)
+            assertEquals(101L,f.next().acknowledgement)
+            f.peer.getOutputStream().write(byteArrayOf(2))
+            val second=f.next()
+            assertArrayEquals(byteArrayOf(2),second.payload)
+            assertEquals(502L,second.sequence)
+            f.send(101,503,24,byteArrayOf(3,4,5,6))
+            val received=ByteArray(4)
+            java.io.DataInputStream(f.peer.getInputStream()).readFully(received)
+            assertArrayEquals(byteArrayOf(3,4,5,6),received)
+        }
+    }
+    @Test fun acknowledgementOfUnsentBytesCannotAuthorizeUpload() {
+        Fixture().use { f ->
+            f.handshake(); f.send(101,999,24,byteArrayOf(9))
+            assertEquals(101L,f.next().acknowledgement)
+            f.peer.soTimeout=150
+            try { f.peer.getInputStream().read(); fail("future ACK upload forwarded") } catch(_: SocketTimeoutException) {}
+        }
+    }
+    @Test fun cumulativeAckProgressWrapsAcrossUnsignedSequenceBoundary() {
+        Fixture(serverInitial=0xfffffffeL).use { f ->
+            f.handshake(); f.peer.getOutputStream().write(byteArrayOf(1,2))
+            val first=f.next(); assertEquals(0xffffffffL,first.sequence)
+            f.send(101,1)
+            f.peer.getOutputStream().write(byteArrayOf(3))
+            val second=f.next(); assertEquals(1L,second.sequence)
+            assertArrayEquals(byteArrayOf(3),second.payload)
+            f.send(101,2)
         }
     }
     @Test fun duplicateClientDataIsNotWrittenTwice() {
