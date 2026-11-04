@@ -265,3 +265,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] UDP manager registers a rule-change listener and unregisters on close (e072b395).
 - [x] Rule-change event regression test verifies session/socket revocation (b70c8d85).
 - [ ] Verify CI, concurrent event behavior and real forwarding before VPN activation.
+
+## UDP socket failure cleanup — 2026-11-04
+- [x] Existing UDP flow send failure now closes and removes the session without retry (84b964f9).
+- [x] Added closed-socket reuse regression test (2f6dbf0d); timing robustness requires review.
+- [ ] Confirm CI, rule-event race behavior, and real TUN return path before VPN activation.
