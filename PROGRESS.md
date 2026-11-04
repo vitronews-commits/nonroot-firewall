@@ -324,3 +324,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - TCP factory now binds locally to an ephemeral port to allocate the descriptor, then requires protect() success BEFORE connect/send. Local bind transmits no packets. Protection failures still close the socket.
 - Added TCP-specific preflight error reporting; the original generic timeout did not distinguish UDP receive from TCP accept, so the earlier UDP attribution was not established.
 - JVM failure-path test now verifies the TCP socket is locally bound but unconnected at protection time. Android verification of the fix pending.
+
+## Independent-UID VPN acceptance correction — 2026-11-04
+- The TCP descriptor fix passed protected preflight locally and allowed TUN establishment. A clean full build passed 111 JVM tests, lint and all APK builds.
+- The previous VPN test's TCP/UDP exchanges succeeded but its UID-attribution assertion failed: traffic from the VPN owner's own UID did not prove interception. This was a test design failure, not a passing firewall test; the assertion prevented a false success report.
+- Added a minimal `:probe` APK with a distinct UID and self-targeting instrumentation. The revised acceptance test requires probe TCP/UDP echo traffic, logged probe ownership, revocation of a live probe TCP connection, and default-blocked UDP appearing in Pending.
+- Probe/main/test APKs compile successfully. Actual separate-UID test execution pending.

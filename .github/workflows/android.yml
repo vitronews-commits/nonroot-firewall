@@ -24,7 +24,7 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Unit, transport integration, lint and APK builds
-        run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleAndroidTest --stacktrace
+        run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleAndroidTest :probe:assembleDebug --stacktrace
       - name: Verify APK integrity and debug signature
         run: |
           test -s app/build/outputs/apk/debug/app-debug.apk
@@ -43,7 +43,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: nonroot-firewall-apks
-          path: app/build/outputs/apk/
+          path: |
+            app/build/outputs/apk/
+            probe/build/outputs/apk/debug/
           if-no-files-found: error
   instrumentation:
     needs: build
@@ -72,6 +74,8 @@ jobs:
             gradle :app:connectedDebugAndroidTest --stacktrace
             mkdir -p app/build/acceptance-reports/offline
             cp -R app/build/outputs/androidTest-results app/build/acceptance-reports/offline/
+            gradle :probe:assembleDebug --stacktrace
+            adb install -r probe/build/outputs/apk/debug/probe-debug.apk
             python3 tools/echo_server.py > /tmp/firewall-echo.log 2>&1 &
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest --stacktrace
       - uses: actions/upload-artifact@v4

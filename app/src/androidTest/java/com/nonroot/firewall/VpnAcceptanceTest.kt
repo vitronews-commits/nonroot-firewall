@@ -40,37 +40,35 @@ class VpnAcceptanceTest {
             val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
             while(EngineEvents.status!="RUNNING" && System.nanoTime()<deadline) Thread.sleep(100)
             assertEquals(EngineEvents.snapshot().take(5).toString(),"RUNNING",EngineEvents.status)
-            val payload="verified-through-real-TUN".toByteArray()
-            Socket().use { socket ->
-                socket.soTimeout=5000
-                socket.connect(InetSocketAddress("10.0.2.2",28080),5000)
-                socket.getOutputStream().write(payload)
-                val received=ByteArray(payload.size)
-                java.io.DataInputStream(socket.getInputStream()).readFully(received)
-                assertArrayEquals(payload,received)
-                DatagramSocket().use { udp ->
-                    udp.soTimeout=5000
-                    udp.connect(InetSocketAddress("10.0.2.2",28081))
-                    udp.send(DatagramPacket(payload,payload.size))
-                    val reply=DatagramPacket(ByteArray(128),128); udp.receive(reply)
-                    assertArrayEquals(payload,reply.data.copyOf(reply.length))
+            val probePackage="com.nonroot.firewall.probe"
+            assertTrue(appStore.save(listOf(AppRule(probePackage,null,Decision.ALLOW))))
+            fun probe(mode: String, onReady: ()->Unit = {}): String {
+                val descriptor=instrumentation.uiAutomation.executeShellCommand(
+                    "am instrument -w -e mode $mode $probePackage/.ProbeInstrumentation")
+                val output=StringBuilder()
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { reader ->
+                    while(true) {
+                        val line=reader.readLine() ?: break
+                        output.append(line).append('\n')
+                        if(line.contains("phase=READY")) onReady()
+                    }
                 }
-                assertTrue("UID attribution did not reach engine",EngineEvents.snapshot().any {
-                    it.connection?.packageName==context.packageName && it.result=="FORWARDED"
-                })
-                assertTrue(ipStore.save(listOf(IpRule(null,"10.0.2.2/32",null,Decision.BLOCK,28080))))
-                socket.getOutputStream().write(payload)
-                try { assertEquals(-1,socket.getInputStream().read()) } catch(_: SocketTimeoutException) { }
+                return output.toString()
             }
+            val allowed=probe("allow")
+            assertTrue(allowed+"\n"+EngineEvents.snapshot().take(12),allowed.contains("status=OK"))
+            assertTrue("Separate-UID attribution did not reach engine: "+EngineEvents.snapshot().take(12),EngineEvents.snapshot().any {
+                it.connection?.packageName==probePackage && it.result=="FORWARDED"
+            })
+            val revoked=probe("tcp_hold") {
+                assertTrue(ipStore.save(listOf(IpRule(null,"10.0.2.2/32",null,Decision.BLOCK,28080))))
+            }
+            assertTrue(revoked,revoked.contains("status=BLOCKED"))
             assertTrue(appStore.save(emptyList()))
             assertTrue(ipStore.save(emptyList()))
-            DatagramSocket().use { udp ->
-                udp.soTimeout=1000; udp.connect(InetSocketAddress("10.0.2.2",28081))
-                udp.send(DatagramPacket(payload,payload.size))
-                try { udp.receive(DatagramPacket(ByteArray(128),128)); fail("Unknown app traffic escaped policy") }
-                catch(_: SocketTimeoutException) { }
-            }
-            assertTrue(EngineEvents.pending.snapshot().any { it.connection.packageName==context.packageName })
+            val unknown=probe("udp_block")
+            assertTrue(unknown,unknown.contains("status=BLOCKED"))
+            assertTrue(EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage })
         } finally {
             context.stopService(Intent(context,FirewallVpnService::class.java))
             appStore.save(savedApps); ipStore.save(savedIps)

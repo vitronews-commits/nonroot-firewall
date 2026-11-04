@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <application android:label="Firewall Test Probe" android:usesCleartextTraffic="false"/>
+    <instrumentation android:name=".ProbeInstrumentation" android:targetPackage="com.nonroot.firewall.probe"/>
+</manifest>
