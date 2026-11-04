@@ -270,3 +270,10 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - [x] Existing UDP flow send failure now closes and removes the session without retry (84b964f9).
 - [x] Added closed-socket reuse regression test (2f6dbf0d); timing robustness requires review.
 - [ ] Confirm CI, rule-event race behavior, and real TUN return path before VPN activation.
+
+## CI verification expansion — 2026-11-04
+- [x] Updated GitHub Actions to compile Android instrumentation-test APK via `:app:assembleAndroidTest` and assemble an unsigned release APK, in addition to unit tests and debug APK (commit ab1382c9).
+- [x] Added nonempty ZIP integrity check for the unsigned release APK.
+- [ ] **Not verified:** workflow execution, compilation, test success, or APK availability. An assembled AndroidTest APK is NOT an executed instrumentation test; an emulator/device test runner must be added.
+- [ ] Unsigned release APK is not installable as-is; signing and release readiness remain pending.
+- [ ] Critical gate unchanged: FirewallVpnService remains inactive until bidirectional TCP/UDP forwarding, loop prevention, attribution and leak tests pass.
