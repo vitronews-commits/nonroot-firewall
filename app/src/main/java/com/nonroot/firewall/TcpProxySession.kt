@@ -63,7 +63,7 @@ class TcpProxySession(
             if(closed.get() || !permitted()) return
             val upstream=socketFactory()
             socket=upstream
-            if(closed.get()) { upstream.close(); return }
+            if(closed.get() || !permitted()) { upstream.close(); return }
             upstream.tcpNoDelay=true
             upstream.sendBufferSize=16384
             upstream.connect(InetSocketAddress(initial.header.destination,initial.header.destinationPort!!),5000)

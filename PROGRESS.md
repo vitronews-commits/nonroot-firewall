@@ -368,3 +368,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Source audit found that reaching 128 attribution-cache entries invalidated all active transports. Repeated short-lived connections could therefore interrupt unrelated long-lived transfers.
 - Added an atomic active-flow snapshot and prune only stale owner metadata when the cache fills. Existing active sessions are retained; cache size remains bounded by pruning to the at-most-64 active flow keys.
 - Existing real UDP integration now checks active-flow snapshot before/after invalidation. No test-success claim for this change until CI completes.
+
+## Stable network callback handling — 2026-11-04
+- Capability callbacks previously invalidated every session, even when only Wi-Fi signal strength changed. Network callbacks now invalidate only when the selected non-VPN network or transport classification changes; rule-save events still revoke immediately.
+- Prefer validated physical networks, falling back to available non-VPN networks when none are validated. This permits switching to a working mobile path when Wi-Fi loses validation without treating RSSI refreshes as network handovers.
+- Recheck closure/policy immediately after TCP/UDP socket factory returns, before connect/send, so a concurrent rule/network revocation cannot reuse a socket allocated across invalidation.
+- Changes require CI verification; physical network transition/Doze acceptance remains pending.

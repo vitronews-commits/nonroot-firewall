@@ -87,7 +87,7 @@ class PacketForwarder(
             try {
                 if(stopped.get() || !allowed(h,epoch)) return
                 val s=udpSocket(); socket=s
-                if(stopped.get()) { s.close(); return }
+                if(stopped.get() || !allowed(h,epoch)) { s.close(); return }
                 s.bind(InetSocketAddress(0))
                 s.connect(InetSocketAddress(h.destination,h.destinationPort!!)); s.soTimeout=50
                 var last=System.nanoTime()

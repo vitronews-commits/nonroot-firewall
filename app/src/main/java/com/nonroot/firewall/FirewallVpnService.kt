@@ -24,6 +24,7 @@ class FirewallVpnService : VpnService() {
     private val stopped=AtomicBoolean(false)
     private val worker=Executors.newSingleThreadExecutor()
     @Volatile private var selectedNetwork: Network?=null
+    private var classifiedKind=NetworkKind.OTHER
     private var tun: ParcelFileDescriptor?=null
     @Volatile private var forwarder: PacketForwarder?=null
     @Volatile private var rules=RuleEngine()
@@ -32,8 +33,8 @@ class FirewallVpnService : VpnService() {
     private val resolver by lazy { ConnectionOwnerResolver(this) }
     private val ruleListener: ()->Unit={ reload() }
     private val callback=object: ConnectivityManager.NetworkCallback() {
-        override fun onLost(network: Network) { reload() }
-        override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { reload() }
+        override fun onLost(network: Network) { updateNetwork() }
+        override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { updateNetwork() }
     }
     override fun onCreate() {
         super.onCreate()
@@ -65,26 +66,41 @@ class FirewallVpnService : VpnService() {
     @Synchronized private fun reload() {
         forwarder?.invalidate()
         owners.clear()
+        updateNetwork()
+        rules=RuleEngine(RuleStore(this).load(),AppRuleStore(this).load())
+        EngineEvents.pending.snapshot().filter { rules.decide(it.connection)!=Decision.PENDING }
+            .forEach { EngineEvents.pending.resolve(it.connection) }
+    }
+    /** Signal-strength/capability refreshes must not terminate unchanged paths. */
+    @Synchronized private fun updateNetwork() {
         val candidates=connectivity.allNetworks.filter { n ->
             val c=connectivity.getNetworkCapabilities(n)
             c?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)==true &&
                 c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
         }
-        selectedNetwork=connectivity.activeNetwork?.takeIf { it in candidates }
-            ?: selectedNetwork?.takeIf { it in candidates } ?: candidates.firstOrNull()
-        if(tun!=null) setUnderlyingNetworks(selectedNetwork?.let { arrayOf(it) })
-        rules=RuleEngine(RuleStore(this).load(),AppRuleStore(this).load())
-        EngineEvents.pending.snapshot().filter { rules.decide(it.connection)!=Decision.PENDING }
-            .forEach { EngineEvents.pending.resolve(it.connection) }
+        val validated=candidates.filter { n ->
+            connectivity.getNetworkCapabilities(n)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)==true
+        }
+        val preferred=validated.ifEmpty { candidates }
+        val next=connectivity.activeNetwork?.takeIf { it in preferred }
+            ?: selectedNetwork?.takeIf { it in preferred } ?: preferred.firstOrNull()
+        val kind=classify(next)
+        if(next==selectedNetwork && kind==classifiedKind) return
+        forwarder?.invalidate()
+        owners.clear()
+        selectedNetwork=next
+        classifiedKind=kind
+        if(tun!=null) setUnderlyingNetworks(next?.let { arrayOf(it) })
     }
-    private fun network(): NetworkKind {
-        val caps=selectedNetwork?.let { connectivity.getNetworkCapabilities(it) }
+    private fun classify(network: Network?): NetworkKind {
+        val caps=network?.let { connectivity.getNetworkCapabilities(it) }
         return when {
             caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)==true -> NetworkKind.WIFI
             caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)==true -> NetworkKind.MOBILE
             else -> NetworkKind.OTHER
         }
     }
+    private fun network()=classify(selectedNetwork)
     private fun allowed(h: PacketParser.Header): Boolean {
         val c=owners[h] ?: return false
         return c.network==network() && rules.decide(c)==Decision.ALLOW &&
