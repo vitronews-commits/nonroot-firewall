@@ -52,13 +52,16 @@ def dns_answer(query):
             raise ValueError("Invalid DNS label")
         labels.append(query[pos:pos+size].lower())
         pos += size
-    if len(query[pos:]) != 4 or query[pos+2:] != b"\x00\x01":
+    if len(query[pos:]) < 4 or query[pos+2:pos+4] != b"\x00\x01":
         raise ValueError("Invalid DNS question class")
+    question = query[12:pos+4]  # Ignore EDNS additional records; response ARCOUNT is zero.
+    if b".".join(labels) == b"firewall-test.invalid":
+        print(f"DNS_FIXTURE queryType={int.from_bytes(query[pos:pos+2], chr(98)+chr(105)+chr(103))} bytes={len(query)}", flush=True)
     if b".".join(labels) != b"firewall-test.invalid":
-        return query[:2] + b"\x81\x83\x00\x01\x00\x00\x00\x00\x00\x00" + query[12:]
+        return query[:2] + b"\x81\x83\x00\x01\x00\x00\x00\x00\x00\x00" + question
     if query[pos:pos+2] != b"\x00\x01":
-        return query[:2] + b"\x81\x80\x00\x01\x00\x00\x00\x00\x00\x00" + query[12:]
-    return query[:2] + b"\x81\x80\x00\x01\x00\x01\x00\x00\x00\x00" + query[12:] + b"\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04\xc0\x00\x02\x7b"
+        return query[:2] + b"\x81\x80\x00\x01\x00\x00\x00\x00\x00\x00" + question
+    return query[:2] + b"\x81\x80\x00\x01\x00\x01\x00\x00\x00\x00" + question + b"\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04\xc0\x00\x02\x7b"
 
 
 def dns_udp(port=28082):

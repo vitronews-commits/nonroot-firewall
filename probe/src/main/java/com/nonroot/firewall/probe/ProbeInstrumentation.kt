@@ -124,6 +124,8 @@ class ProbeInstrumentation : Instrumentation() {
             }
             if(mode in listOf("direct_socket","direct_channel")) {
                 check(android.os.Build.HARDWARE in listOf("ranchu","goldfish"))
+                stage="direct-system-dns"
+                check(java.net.InetAddress.getAllByName("firewall-test.invalid").any { it.hostAddress=="192.0.2.123" })
                 stage="direct-half-close"
                 transfer(1024*1024)
                 result.putString("status","OK"); finish(Activity.RESULT_OK,result); return

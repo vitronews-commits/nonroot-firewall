@@ -463,3 +463,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Restrict IPv4 rule digits to ASCII; Unicode digit-like hostnames must not reach InetAddress/DNS lookup. Short hex-only hostnames rejected before resolution.
 - Reject mapped IPv6 wire addresses which Java normalizes to IPv4; do not silently change response IP family. Three targeted tests added, not locally executed while runtime is unavailable.
 - API 29 returned every 1 MiB byte then upstream response-read reset before EOF. Added no-VPN Socket and bound-SocketChannel controls against the same host fixture, explicit graceful linger and preserved host logs. Reset remains a failure.
+
+## Android system DNS identity investigation — CI pending
+- Real system DNS failed on API 29 before load. Preserve/log unknown numeric UID, package count and transport tuple without payload or DNS content; no permission is granted to package-less/shared identities.
+- AOSP resolver source explicitly uses AID_DNS on Q in affected modules because per-app fchown conflicts with Q VPN isolation: https://android.googlesource.com/platform/packages/modules/DnsResolver/+/refs/tags/android-vts-12.1_r4/resolv_private.h . Whether this explains our emulator is not assumed without UID evidence.
+- Host DNS fixture now accepts EDNS additional records and returns only the question plus its controlled answer. No-VPN Android name-resolution controls must pass before drawing conclusions about the firewall.

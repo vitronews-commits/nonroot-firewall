@@ -256,7 +256,7 @@ class FirewallVpnService : VpnService() {
                 if(pkg==null) {
                     owners.remove(h)
                     engine.accept(bytes) // Revoke a previously attributed flow, if any.
-                    if(trafficLogs.allow(h,2)) EngineEvents.record(null,"DROP unknown/shared UID"); continue
+                    if(trafficLogs.allow(h,2)) EngineEvents.record(null,"DROP unknown/shared UID uid=${owner?.uid} packages=${owner?.packageNames?.size} proto=${h.protocol} destination=${h.destination}:${h.destinationPort}"); continue
                 }
                 val connection=Connection(pkg,h.destination,h.destinationPort!!,network())
                 val decision=rules.decide(connection)
