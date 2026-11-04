@@ -1,0 +1,29 @@
+name: Cancel obsolete development verification runs
+on:
+  push:
+    branches: [development/daily-use]
+    paths: [.github/workflows/cleanup-obsolete.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Free emulator slots used by superseded intermediate revisions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_HEAD: ${{ github.sha }}
+        run: |
+          gh api 'repos/vitronews-commits/nonroot-firewall/actions/runs?branch=development%2Fdaily-use&per_page=100' > /tmp/runs.json
+          python3 - <<'PY' > /tmp/obsolete.txt
+          import json, os
+          for run in json.load(open("/tmp/runs.json"))["workflow_runs"]:
+              if run["name"] == "Android verification" and run["status"] in ("queued","in_progress") and run["head_sha"] != os.environ["CURRENT_HEAD"] and run["id"] != 41818439830:
+                  print(int(run["id"]))
+          PY
+          while IFS= read -r run; do
+            echo "Cancelling superseded development run $run"
+            gh run cancel "$run" --repo vitronews-commits/nonroot-firewall || true
+          done < /tmp/obsolete.txt

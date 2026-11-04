@@ -502,3 +502,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - After protected preflight, a malformed-policy bootstrap retains a closed TUN instead of deliberately releasing routing. Added actual-TUN corruption/blocked-I/O/explicit-repair acceptance and Android storage-preservation checks.
 - Successful/duplicate START returns START_STICKY to aid OS process recovery. STOP/revoke explicitly terminate; sticky restart alone is not a lockdown guarantee. Home status distinguishes OFF after a terminal error.
 - Added a single-APK debug artifact to reduce confusion with instrumentation/probe APKs. Release remains unsigned.
+
+## Emulator association and verification resource control
+- API 35 completed load and reached Wi-Fi return, but merely enabling the radio did not reassociate the emulator SSID. Explicit test-only AndroidWifi reassociation added; no production network preference override.
+- Superseded intermediate emulator workflows are cancelled to free CI slots. Keep the latest source and the already-running sleep-aware 60-minute engine sample (41818439830); no unfinished soak is counted as passing.
+- Maintenance workflow is temporary development scaffolding, not an app feature.

@@ -148,10 +148,14 @@ class VpnAcceptanceTest {
                     assertTrue(EngineEvents.liveConnections().isEmpty())
                     println("TUN_HANDOVER WIFI_TO_OFFLINE PASS; WIFI_TO_MOBILE NOT_TESTED (no cellular path)")
                 }
-            } finally { shell("svc wifi enable"); shell("svc data disable") }
+            } finally {
+                shell("svc wifi enable")
+                if(Build.VERSION.SDK_INT>=30) println("WIFI_REASSOCIATE "+shell("cmd wifi connect-network AndroidWifi open"))
+                shell("svc data disable")
+            }
             var limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(45)
             while((EngineEvents.network!=NetworkKind.WIFI || EngineEvents.status!="RUNNING") && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
-            assertEquals(NetworkKind.WIFI,EngineEvents.network); assertEquals("RUNNING",EngineEvents.status)
+            assertEquals("Wi-Fi restore: "+shell("cmd wifi status"),NetworkKind.WIFI,EngineEvents.network); assertEquals("RUNNING",EngineEvents.status)
             val reconnect=probe("allow"); assertTrue(reconnect.replace("\n"," | "),reconnect.contains("status=OK"))
             println("TUN_RECONNECT WIFI_TCP_UDP_DNS PASS")
             repeat(2) {
@@ -192,7 +196,7 @@ class VpnAcceptanceTest {
             assertTrue("System DNS attribution unsupported/failed: "+systemDns.replace("\n"," | ")+" "+dnsIdentityEvidence,systemDnsSupported)
             assertTrue("Clean client-first half-close failed (compare independent controls): "+halfClose.replace("\n"," | "),halfClosePassed)
         } finally {
-            shell("svc wifi enable"); shell("svc data disable")
+            shell("svc wifi enable"); if(Build.VERSION.SDK_INT>=30) shell("cmd wifi connect-network AndroidWifi open"); shell("svc data disable")
             context.stopService(Intent(context,FirewallVpnService::class.java))
             assertTrue(RuleBackup.apply(context,RuleBackup.Data(savedIps,savedApps)))
             shell("appops set ${context.packageName} ACTIVATE_VPN default")
