@@ -201,10 +201,22 @@ class ProbeInstrumentation : Instrumentation() {
                 val started=android.os.SystemClock.elapsedRealtimeNanos()
                 val cpu=android.os.Process.getElapsedCpuTime()
                 val pssBefore=android.os.Debug.getPss()
+                var persistentEchoes=0
                 if(mode!="soak") {
                     for(size in listOf(1,10,100)) {
                         stage="${size}MiB"; val begin=android.os.SystemClock.elapsedRealtimeNanos(); transfer(size*1024*1024); completed+=size.toLong()*1024*1024
                         sendStatus(0,Bundle().apply { putString("measurement","$stage bytes=${size*1024*1024} elapsedMs=${(android.os.SystemClock.elapsedRealtimeNanos()-begin)/1000000}") })
+                    }
+                    Socket().use { latencySocket ->
+                        latencySocket.tcpNoDelay=true; latencySocket.soTimeout=5000
+                        latencySocket.connect(InetSocketAddress("10.0.2.2",28080),5000)
+                        val samples=LongArray(32) {
+                            val began=android.os.SystemClock.elapsedRealtimeNanos()
+                            latencySocket.getOutputStream().write(42)
+                            check(latencySocket.getInputStream().read()==42)
+                            (android.os.SystemClock.elapsedRealtimeNanos()-began)/1000
+                        }.sorted()
+                        sendStatus(0,Bundle().apply { putString("measurement","latency samples=32 medianUs=${samples[16]} p95Us=${samples[30]}") })
                     }
                     stage="concurrent"; val errors=java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
                     val threads=(1..4).map { Thread { try { transfer(1024*1024) } catch(t: Throwable) { errors.add(t) } }.apply { start() } }
@@ -213,7 +225,15 @@ class ProbeInstrumentation : Instrumentation() {
                     check(durationSeconds>=3600) { "Soak requires at least 60 minutes" }
                     val deadline=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(durationSeconds.toLong())
                     var heartbeatAt=android.os.SystemClock.elapsedRealtimeNanos()
+                    Socket().use { persistent ->
+                    persistent.soTimeout=15000; persistent.tcpNoDelay=true
+                    persistent.connect(InetSocketAddress("10.0.2.2",28080),5000)
                     while(android.os.SystemClock.elapsedRealtimeNanos()<deadline) {
+                        persistent.getOutputStream().write(payload)
+                        val response=ByteArray(payload.size)
+                        var offset=0
+                        while(offset<response.size) { val count=persistent.getInputStream().read(response,offset,response.size-offset); check(count>0); offset+=count }
+                        check(response.contentEquals(payload)); persistentEchoes++
                         stage="soak-transfer"; transfer(65536); completed+=65536
                         DatagramSocket().use { udp -> udp.soTimeout=5000; udp.connect(InetSocketAddress("10.0.2.2",28081)); udp.send(DatagramPacket(payload,payload.size)); val answer=DatagramPacket(ByteArray(1500),1500); udp.receive(answer); check(answer.data.copyOf(answer.length).contentEquals(payload)) }
                         if(android.os.SystemClock.elapsedRealtimeNanos()-heartbeatAt>=java.util.concurrent.TimeUnit.SECONDS.toNanos(60)) {
@@ -222,9 +242,10 @@ class ProbeInstrumentation : Instrumentation() {
                         }
                         Thread.sleep(5000)
                     }
+                    }
                 }
                 result.putString("status","OK")
-                result.putString("metrics","mode=$mode bytes=$completed concurrentConnections=${if(mode!="soak") 4 else 1} halfCloseRequired=${mode!="stress_payload"} elapsedMs=${(android.os.SystemClock.elapsedRealtimeNanos()-started)/1000000} cpuMs=${android.os.Process.getElapsedCpuTime()-cpu} pssBeforeKiB=$pssBefore pssAfterKiB=${android.os.Debug.getPss()}")
+                result.putString("metrics","mode=$mode bytes=$completed concurrentConnections=${if(mode!="soak") 4 else 1} halfCloseRequired=${mode!="stress_payload"} persistentEchoes=$persistentEchoes elapsedMs=${(android.os.SystemClock.elapsedRealtimeNanos()-started)/1000000} cpuMs=${android.os.Process.getElapsedCpuTime()-cpu} pssBeforeKiB=$pssBefore pssAfterKiB=${android.os.Debug.getPss()}")
                 finish(Activity.RESULT_OK,result); return
             }
             val tcpPayload=if(allowedMode()) ByteArray(65536) { (it*37).toByte() } else payload

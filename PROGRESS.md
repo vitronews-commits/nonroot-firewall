@@ -524,4 +524,7 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Require external-sink positive controls before and after the test. Refuse installation over existing firewall app data even on an emulator.
 - Exact retained soak evidence from source 72b4f55: 3,605,281 ms, 42,532,864 TCP bytes plus UDP echoes, engine CPU 49,528 ms, PSS before/after 120,327/48,537 KiB. Screen off with a test-only partial wake lock. The encompassing JUnit test FAILED later on DNS Pending; this is not a complete soak acceptance PASS or a battery/Doze result.
 
-- Verification update: 16d9448 build job 126668784317 passed 162 JVM tests with zero failures/errors/skips and all 125 baseline IDs. Lint, debug/release/test/probe builds and debug signature passed. Emulator jobs are separate and pending.
+## 2026-11-04 — broaden diagnostics without masking failures
+
+- Keep DNS compatibility failures until the final assertion so reconnect, repeated START/STOP and corrupt-policy repair are still exercised. The test still fails when any recorded requirement fails.
+- Add 32 round-trip latency samples (median/p95) and one persistent TCP stream throughout the 60-minute screen-off transfer loop, alongside fresh TCP/UDP sessions. The metrics validator requires those observations; pending execution.

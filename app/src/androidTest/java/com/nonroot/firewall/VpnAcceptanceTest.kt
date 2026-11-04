@@ -79,6 +79,7 @@ class VpnAcceptanceTest {
                     it.result.startsWith("REPLY ") &&
                     (it.result.removePrefix("REPLY ").substringBefore(' ').toIntOrNull() ?: 0)>64
             })
+            val compatibilityFailures=mutableListOf<String>()
             val systemDns=probe("system_dns")
             val systemDnsSupported=systemDns.contains("status=OK")
             val dnsIdentityEvidence=EngineEvents.snapshot().filter { it.result.contains(":53") }.take(8).toString()
@@ -125,8 +126,9 @@ class VpnAcceptanceTest {
             if(systemDnsSupported) {
                 val deniedDns=probe("dns_block")
                 assertTrue(deniedDns.replace("\n"," | "),deniedDns.contains("status=BLOCKED"))
-                assertTrue("DNS did not reach exact per-app Pending policy",EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage && it.connection.port==53 })
-                println("TUN_DNS_DEFAULT_DENY PASS")
+                val pendingDns=EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage && it.connection.port==53 }
+                if(!pendingDns) compatibilityFailures.add("DNS denied but exact per-app Pending was absent; events="+EngineEvents.snapshot().take(20))
+                println("TUN_DNS_DEFAULT_DENY "+if(pendingDns) "PASS" else "FAIL")
             } else println("TUN_DNS_DEFAULT_DENY NOT_TESTED_PER_APP; shared resolver remained blocked")
             // Toggle only emulator networking. Reconnect must rebuild DNS/routes while old TUN blocks.
             assertTrue(appStore.save(listOf(AppRule(probePackage,null,Decision.ALLOW))))
@@ -139,9 +141,10 @@ class VpnAcceptanceTest {
                     while(EngineEvents.status!="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
                     val mobile=probe("allow_mobile"); assertTrue(mobile.replace("\n"," | "),mobile.contains("status=OK"))
                     val mobileDns=probe("system_dns_mobile")
-                    assertTrue(mobileDns.replace("\n"," | "),mobileDns.contains("status=OK"))
-                    assertTrue("Mobile system DNS was not attributed",EngineEvents.snapshot().any { it.connection?.packageName==probePackage && it.connection.port==53 && it.connection.network==NetworkKind.MOBILE && it.result=="QUEUED" })
-                    println("TUN_HANDOVER WIFI_TO_MOBILE PASS")
+                    val mobileDnsAttributed=EngineEvents.snapshot().any { it.connection?.packageName==probePackage && it.connection.port==53 && it.connection.network==NetworkKind.MOBILE && it.result=="QUEUED" }
+                    val mobileDnsPassed=mobileDns.contains("status=OK") && mobileDnsAttributed
+                    if(!mobileDnsPassed) compatibilityFailures.add("Mobile DNS failed: "+mobileDns.replace("\n"," | ")+" events="+EngineEvents.snapshot().take(20))
+                    println("TUN_HANDOVER WIFI_TO_MOBILE_TRANSPORT PASS; SYSTEM_DNS "+if(mobileDnsPassed) "PASS" else "FAIL")
                 } else {
                     while(EngineEvents.status=="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
                     assertTrue("Offline gate not retained",EngineEvents.status.startsWith("WAITING"))
@@ -193,6 +196,7 @@ class VpnAcceptanceTest {
             assertTrue(repaired.replace("\n"," | "),repaired.contains("status=OK"))
             println("TUN_CORRUPT_BOOTSTRAP_AND_EXPLICIT_REPAIR PASS")
 
+            assertTrue(compatibilityFailures.joinToString(" | "),compatibilityFailures.isEmpty())
             assertTrue("System DNS attribution unsupported/failed: "+systemDns.replace("\n"," | ")+" "+dnsIdentityEvidence,systemDnsSupported)
             assertTrue("Clean client-first half-close failed (compare independent controls): "+halfClose.replace("\n"," | "),halfClosePassed)
         } finally {

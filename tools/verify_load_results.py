@@ -15,13 +15,15 @@ record = records[0]
 if "status=OK" not in record:
     raise SystemExit("No successful probe result")
 if soak:
-    match = re.search(r"mode=soak bytes=(\d+) concurrentConnections=1 halfCloseRequired=true elapsedMs=(\d+)", record)
-    if not match or int(match[1]) <= 0 or int(match[2]) < 3600000:
+    match = re.search(r"mode=soak bytes=(\d+) concurrentConnections=1 halfCloseRequired=true persistentEchoes=(\d+) elapsedMs=(\d+)", record)
+    if not match or int(match[1]) <= 0 or int(match[2]) < 100 or int(match[3]) < 3600000:
         raise SystemExit("Soak did not execute transfers for at least 60 minutes")
 else:
     for mib in (1, 10, 100):
         if not re.search(rf"measurement={mib}MiB bytes={mib*1024*1024} elapsedMs=\d+", record):
             raise SystemExit(f"Missing {mib} MiB transfer evidence")
+    if not re.search(r"measurement=latency samples=32 medianUs=\d+ p95Us=\d+", record):
+        raise SystemExit("Missing latency sample evidence")
     if "concurrentConnections=4" not in record:
         raise SystemExit("Missing concurrent transfer evidence")
 for field in ("engineCpuMs", "enginePssBeforeKiB", "enginePssAfterKiB"):
