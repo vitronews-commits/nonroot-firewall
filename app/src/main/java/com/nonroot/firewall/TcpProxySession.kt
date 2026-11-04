@@ -6,6 +6,7 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.security.SecureRandom
 import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -79,6 +80,9 @@ class TcpProxySession(
                         if(permitted()) reply(outstanding!!)
                         sentAt=now()
                     }
+                    // Wake immediately for an ACK, otherwise sleep until the next timer check.
+                    // A busy loop here burns CPU and floods Android UID lookups.
+                    incoming.poll(50,TimeUnit.MILLISECONDS)?.let { process(it,upstream) }
                 } else if(established && !remoteFin && peerWindow>0) {
                     val count=try { upstream.getInputStream().read(buffer,0,minOf(buffer.size,peerWindow)) }
                         catch(_: SocketTimeoutException) { 0 }

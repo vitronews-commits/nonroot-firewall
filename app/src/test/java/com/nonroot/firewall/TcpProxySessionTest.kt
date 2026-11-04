@@ -76,6 +76,24 @@ class TcpProxySessionTest {
             assertTrue(f.session.isClosed()); assertEquals(-1,f.peer.getInputStream().read())
         }
     }
+    @Test fun waitingForAcknowledgementDoesNotBusySpin() {
+        val checks=java.util.concurrent.atomic.AtomicInteger()
+        val replies=LinkedBlockingQueue<ByteArray>()
+        ServerSocket(0,1,InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout=3000
+            val h=PacketParser.Header("10.23.0.2","127.0.0.1",6,41000,server.localPort,false)
+            val first=TransportPacket.Packet(h,byteArrayOf(),100,0,2,16384)
+            val session=TcpProxySession(first,{ Socket() },{ replies.offer(it) },{ checks.incrementAndGet(); true })
+            val worker=Thread { session.run() }.apply { start() }
+            try {
+                server.accept().use {
+                    assertNotNull(replies.poll(3,TimeUnit.SECONDS))
+                    Thread.sleep(250)
+                    assertTrue("ACK wait busy-spun: ${checks.get()} policy lookups",checks.get()<100)
+                }
+            } finally { session.close(); worker.join(2000); assertFalse(worker.isAlive) }
+        }
+    }
     @Test fun sequenceWrapIsHandledDuringHandshake() {
         assertEquals(1L,TcpProxySession.add(0xffffffffL,2))
     }

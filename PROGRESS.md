@@ -1,5 +1,16 @@
 # NonRoot Firewall — progress
 
+## Current status — 2026-11-04
+
+- Connected VpnService engine with protected IPv4/IPv6 TCP/UDP forwarding, UID attribution, app/network/IP/CIDR/port rules, default blocking, Pending approvals and real Logs. Existing five tabs and preference keys retained.
+- Local full build passes: **112 JVM tests, 0 failed/skipped**, app/probe lint, signed debug APK, unsigned release APK, AndroidTest and independent-UID probe APK.
+- Real TUN acceptance passed locally using the separate probe UID: TCP/UDP payload integrity, attribution, established-flow revocation and default-blocked Pending.
+- CI Android API 29 and 35 matrix passed in run **41749462403**. A final ACK-wait CPU fix is undergoing the same Android regression checks; its JVM regression passes.
+- Development transport limits remain: conservative stop-and-wait TCP, no fragmentation/IP options/IPv6 extension support, no ICMP path-MTU synthesis. See VALIDATION.md; this is not a production-readiness claim.
+- Remaining external acceptance: physical Redmi 13C network switching/Doze/reboot/lockdown and DNS/IPv6 leak capture; persistent release key for signed release distribution.
+
+## Historical scaffold record (superseded by current status)
+
 ## Locked requirements
 - Classic NoRoot Firewall-inspired five-tab UI: Home, Pending, Apps, Filters, Log.
 - Default decision: **PENDING** (ask); unknown connections must not be forwarded.
@@ -7,7 +18,7 @@
 - No root, no remote VPN server, minimal settings.
 - Android 15 target device: Redmi 13C.
 
-## Implemented (source only; not yet built or device-tested)
+## Historical implementation snapshot (2026-11-03)
 - [x] Android Kotlin project skeleton.
 - [x] Five-tab placeholder UI.
 - [x] Pure Kotlin rule decision model with default PENDING.
@@ -25,7 +36,7 @@
 - [x] ConnectionGate records PENDING metadata, clears resolved requests, and enforces ALLOW-only decision semantics.
 - [x] Rule precedence aligned: app+IP > app rule > global IP > pending; regression tests added.
 
-## Not implemented
+## Historical remaining work at scaffold stage
 - [ ] Integrate and license-audit NetGuard native forwarding engine; no NetGuard code is present yet.
 - [ ] Packet-to-UID attribution, live connection interception, pending approvals and timeouts.
 - [ ] Connect PendingQueue to packet engine; current queue is a pure in-memory model, not a traffic buffer.
@@ -341,3 +352,8 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 ## Android-version verification expansion — 2026-11-04
 - Expanded CI instrumentation to Android API 29 and API 35 (Android 15), with independent report artifacts per API. Both run off-TUN tests before the explicitly gated separate-UID TUN acceptance test.
 - This complements, but does not replace, physical Redmi 13C checks for network transitions, Doze, OEM process management, and leak capture.
+
+## ACK-wait CPU regression — 2026-11-04
+- Removed a busy loop while TCP awaited ACKs; the worker now blocks on its bounded input queue and wakes immediately when a packet arrives, with periodic retransmission timer checks.
+- Added a regression that bounds policy/UID lookup calls during an unacknowledged interval. Full local build passed **112 tests**, both lint tasks and all APKs.
+- API 29/API 35 CI passed on the preceding functional revision (41749462403). Final scheduling regression run is pending; actual local real-TUN rerun is in progress.
