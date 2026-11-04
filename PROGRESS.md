@@ -300,3 +300,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Added live Home status updates and VALIDATION.md with exact limits and device acceptance steps; rebuilding after the UI change.
 - Published implementation branch `engine/vpn-transport` and draft PR #1 through authenticated GitHub API after plain git push lacked credentials. Main remains at the inspected baseline while validation continues.
 - Software-emulated Android 29 boot in progress. No physical-device or real TUN activation has been performed. Do not interpret assembled APKs as device acceptance evidence.
+
+## Emulator acceptance harness and CI setup fix — 2026-11-04
+- Added an explicitly gated emulator-only VpnAcceptanceTest and loopback host echo fixture. It first verifies off-TUN forwarding, then relies on the service's protected preflight before TUN creation; checks actual TCP/UDP return traffic, UID attribution, active-flow revocation and unknown-app Pending. Execution pending.
+- CI setup action failed while accepting unrelated SDK licenses before compilation (runs 41746348544/41746341066). Replaced it with the repository's previously working preinstalled-sdkmanager package-install approach.
+- CI now runs no-VPN Android tests first, then the explicitly enabled emulator TUN acceptance stage. No physical device is automatically activated.
+- Removed duplicate branch-push/PR builds to avoid spending two CI runs per update.

@@ -1,7 +1,7 @@
 name: Android verification
 on:
   push:
-    branches: [main, 'engine/**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -16,7 +16,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Install required SDK packages
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -65,7 +68,12 @@ jobs:
           api-level: 29
           arch: x86_64
           disable-animations: true
-          script: gradle :app:connectedDebugAndroidTest --stacktrace
+          script: |
+            gradle :app:connectedDebugAndroidTest --stacktrace
+            mkdir -p app/build/acceptance-reports/offline
+            cp -R app/build/outputs/androidTest-results app/build/acceptance-reports/offline/
+            python3 tools/echo_server.py > /tmp/firewall-echo.log 2>&1 &
+            gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest --stacktrace
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -73,3 +81,4 @@ jobs:
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
+            app/build/acceptance-reports/
