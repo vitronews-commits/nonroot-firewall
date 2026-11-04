@@ -5,6 +5,7 @@ object EngineEvents {
     data class Event(val time: Long, val connection: Connection?, val result: String,val protocol: Int?=null)
     data class LiveConnection(val connection: Connection,val protocol: Int,val sourcePort: Int?,val status: String,val tunInputBytes: Long,val tunOutputBytes: Long)
     @Volatile var liveConnections: ()->List<LiveConnection> = { emptyList() }
+    @Volatile var tunnelEstablished=false
     val pending=PendingQueue()
     @Volatile var network: NetworkKind?=null
     @Volatile var status="OFF — validation required"

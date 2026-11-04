@@ -64,4 +64,30 @@ class TcpWindowTest {
         peer.getOutputStream().write(byteArrayOf(5))
         assertEquals(start+4,next(q).sequence)
     }
+    @Test fun zeroWindowAfterFinNeverReplaysPayloadAtFinSequence()=windowTest { s,peer,q,h,start ->
+        peer.getOutputStream().write(byteArrayOf(42))
+        val data=next(q)
+        assertArrayEquals(byteArrayOf(42),data.payload)
+        s.offer(TransportPacket.Packet(h,byteArrayOf(),101,start+1,16,16384))
+        peer.shutdownOutput()
+        val fin=next(q)
+        assertTrue(fin.flags and TcpProxySession.FIN!=0)
+        s.offer(TransportPacket.Packet(h,byteArrayOf(),101,fin.sequence,16,0))
+        var probe=next(q)
+        while(probe.flags and TcpProxySession.FIN!=0) probe=next(q)
+        assertTrue("Persist after FIN invented payload",probe.payload.isEmpty())
+        assertEquals(TcpProxySession.add(fin.sequence,-1),probe.sequence)
+    }
+    @Test fun keepaliveProbeByteIsAcknowledgedButNeverUploaded()=windowTest { s,peer,q,h,start ->
+        s.offer(TransportPacket.Packet(h,byteArrayOf(9),101,start,16,16384))
+        assertEquals(9,peer.getInputStream().read())
+        assertEquals(102L,next(q).acknowledgement)
+        s.offer(TransportPacket.Packet(h,byteArrayOf(0),101,start,16,16384))
+        assertEquals(102L,next(q).acknowledgement)
+        peer.soTimeout=200
+        try { peer.getInputStream().read(); fail("Keepalive byte forwarded") }
+        catch(_: java.net.SocketTimeoutException) { }
+        peer.getOutputStream().write(byteArrayOf(7))
+        assertArrayEquals(byteArrayOf(7),next(q).payload)
+    }
 }

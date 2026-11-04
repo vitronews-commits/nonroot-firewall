@@ -91,6 +91,7 @@ class TcpProxySession(
             val upstream=socketFactory(); socket=upstream
             if(closed.get() || !permitted() || !authorizeUpload()) { upstream.close(); return }
             upstream.tcpNoDelay=true
+            upstream.keepAlive=true
             operation="connect"
             upstream.connect(destination(),5000)
             val channel=upstream.channel
@@ -102,7 +103,7 @@ class TcpProxySession(
             emit(flags=SYN or ACK,tracked=true)
             val buffer=ByteArray(sendMss)
             while(!closed.get() && permitted()) {
-                if((nanoTime()-lastActivity)/1_000_000>=idleMs) break
+                if((nanoTime()-lastActivity)/1_000_000>=idleMs) { emit(flags=RST or ACK); break }
                 repeat(32) { incoming.poll()?.let { process(it,upstream) } }
                 if(closed.get()) break
                 if(upload.position()>0) {
@@ -148,8 +149,12 @@ class TcpProxySession(
                 }
                 if(established && peerWindow==0 && now()-lastProbe>=1000) {
                     lastProbe=now()
-                    if(permitted()) reply(TransportPacket.build(reverse,lastDataByte?.let { byteArrayOf(it) } ?: byteArrayOf(),
-                        add(serverNext,-1),clientNext,ACK,upload.remaining()))
+                    // FIN consumes a sequence number but is not a data byte. Reusing the
+                    // last payload byte at the FIN sequence would invent application data.
+                    val probePayload=if(remoteFin) byteArrayOf() else lastDataByte?.let { byteArrayOf(it) } ?: byteArrayOf()
+                    val probeSequence=add(serverNext,if(remoteFin) -2 else -1)
+                    if(permitted()) reply(TransportPacket.build(reverse,probePayload,
+                        probeSequence,clientNext,ACK,upload.remaining()))
                 }
                 if(clientFin && remoteFin && sent.isEmpty()) break
                 if(incoming.isNotEmpty() || progressed) continue
@@ -184,6 +189,11 @@ class TcpProxySession(
             return
         }
         if(p.flags and ACK==0) return
+        // Keepalive uses SND.NXT-1; acknowledge without uploading its optional probe byte.
+        if(established && p.flags==ACK && p.sequence==add(clientNext,-1) && p.payload.size<=1 &&
+            distance(serverAcknowledged,p.acknowledgement)<=distance(serverAcknowledged,serverNext)) {
+            lastActivity=nanoTime(); emit(); return
+        }
         // ACK processing and ordered upload consumption are independent.
         val seqDistance=distance(clientNext,p.sequence)
         if(seqDistance>=RECEIVE_WINDOW) { emit(); return }

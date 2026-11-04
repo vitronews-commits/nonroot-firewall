@@ -171,7 +171,7 @@ class FirewallVpnService : VpnService() {
         synchronized(this) {
             if(stopped.get()) { next.close(); return null }
             val old=tun
-            tun=next; installedVersion=config.first
+            tun=next; EngineEvents.tunnelEstablished=true; installedVersion=config.first
             refreshReady()
             try { old?.close() } catch(_: Exception) { }
         }
@@ -292,7 +292,7 @@ class FirewallVpnService : VpnService() {
         policyReady=false
         stopped.set(true)
         forwarder?.close(); forwarder=null
-        synchronized(this) { tun?.close(); tun=null }
+        synchronized(this) { tun?.close(); tun=null; EngineEvents.tunnelEstablished=false }
         owners.clear()
         EngineEvents.liveConnections={ emptyList() }
         EngineEvents.network=null

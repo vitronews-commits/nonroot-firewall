@@ -1,3 +1,12 @@
+## 2026-11-04 — TCP incarnation and FIN persistence hardening (verification pending)
+
+- Retain the existing engine and all 125 baseline tests.
+- Per-flow atomic leases revoke stale workers before tuple reuse; response delivery verifies the exact incarnation under the flow monitor.
+- FIN persistence no longer emits the previous payload byte at the FIN sequence. Keepalive probes are acknowledged without forwarding probe data. Idle expiry emits a reset and upstream sockets enable keepalive.
+- Corrupt-policy acceptance now waits for an actually established closed TUN, not merely an early error status.
+- Added three regression tests; not yet declared passing. Local wrapper execution failed because the Gradle distribution network endpoint is unreachable. CI is the validation authority for this milestone.
+- Previous head 72b4f55 built successfully, but API 35 acceptance failed on mobile system DNS; the 60-minute job failed on its subsequent DNS Pending assertion. API 29 aborted with an emulator system crash. These are not overall PASS results.
+
 # NonRoot Firewall — progress
 
 ## Current status — 2026-11-04 / 0.3.0-dev acceptance in progress
