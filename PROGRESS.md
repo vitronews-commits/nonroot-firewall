@@ -423,3 +423,10 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Corrupt stored policy now closes forwarding gate; raw preferences are not rewritten. Bounded JSON nesting/UTF-8/schema checks protect import before recursive Android parsing. Log sampling reduces per-packet UI metadata churn; flow byte counters retain all admitted IP bytes.
 - Added checksum-tested ICMPv4 fragmentation-needed / ICMPv6 Packet Too Big for permitted oversized UDP relative to cached underlying MTU; denied packets cannot allocate sockets or receive this response. Upstream TCP PMTU remains kernel-managed. Unsupported fragment/extension data remains denied.
 - First API 35 actual TUN 1/10/100 MiB + concurrency passed; API 29 reset remains under investigation. Backup rejection test fixture corrected to mutate structured JSON (Android escapes CIDR slash in serialized JSON); the prior string replacement did not mutate its input.
+
+## I/O authorization, backpressure and compatibility milestone — verification pending
+- Retain fresh UID/package validation at each actual upstream write/connect and TUN reply; cheap generation/rule checks replace redundant UID binder calls inside bookkeeping loops. No UID TTL cache introduced. Added deny-at-I/O regression.
+- TunWriter retries EAGAIN via POLLOUT with a bounded deadline and revalidates authorization after every wait. No blind retry or busy loop; counters advance after successful output. Android 10 reset diagnosis remains subject to actual TUN rerun.
+- Protected UDP DatagramChannel uses selector wakeups; unconnected send plus exact remote address/port receive filtering preserves valid zero-length datagrams (connected JDK channel optimized them away). Tests cover empty/1200/1472-byte UDP and counters.
+- Separate-UID fixtures now exchange real DNS wire messages over UDP/TCP, and a 1200-byte UDP echo (QUIC-sized transport, not a QUIC/TLS handshake certification). Mandatory metric verifier rejects missing load or <60-minute soak evidence.
+- Fixed JVM-only CPU metric reflection so Android unit-test compilation does not require unsupported management APIs.

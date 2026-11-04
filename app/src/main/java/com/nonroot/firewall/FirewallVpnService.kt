@@ -121,6 +121,11 @@ class FirewallVpnService : VpnService() {
         }
     }
     private fun network()=classifiedKind
+    private fun policyAllows(h: PacketParser.Header): Boolean {
+        if(!policyReady || stopped.get() || selectedNetwork==null) return false
+        val c=owners[h]?.connection ?: return false
+        return c.network==network() && rules.decide(c)==Decision.ALLOW
+    }
     private fun allowed(h: PacketParser.Header): Boolean {
         if(!policyReady || stopped.get() || selectedNetwork==null) return false
         val owner=owners[h] ?: return false
@@ -128,6 +133,10 @@ class FirewallVpnService : VpnService() {
         val current=resolver.resolve(h) ?: return false
         return c.network==network() && rules.decide(c)==Decision.ALLOW &&
             current.uid==owner.uid && current.unambiguousPackage==c.packageName
+    }
+    private fun outboundHeader(bytes: ByteArray): PacketParser.Header? {
+        val h=PacketParser.parse(bytes) ?: return null
+        return if(h.protocol in listOf(6,17)) TransportPacket.reverse(h) else PathMtu.originatingHeader(bytes)
     }
     private fun startTunnel() {
         var input: ParcelFileDescriptor.AutoCloseInputStream?=null
@@ -156,18 +165,22 @@ class FirewallVpnService : VpnService() {
             val incoming=ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.dup(descriptor.fileDescriptor))
             input=incoming
             val poll=StructPollfd().apply { fd=incoming.fd; events=OsConstants.POLLIN.toShort() }
-            val writeLock=Any()
-            val engine=PacketForwarder(::tcp,::udp,::allowed,{ bytes ->
-                synchronized(writeLock) {
-                    if(!stopped.get()) {
-                        out.write(bytes)
-                        val h=PacketParser.parse(bytes)?.let { TransportPacket.reverse(it) }
-                        if(trafficLogs.allow(h,1)) EngineEvents.record(h?.let { owners[it]?.connection },"REPLY ${bytes.size} bytes",h?.protocol)
-                    }
-                }
+            val writePoll=StructPollfd().apply { fd=out.fd; events=OsConstants.POLLOUT.toShort() }
+            val writer=TunWriter({ bytes ->
+                try {
+                    val count=Os.write(out.fd,bytes,0,bytes.size)
+                    check(count==bytes.size) { "Partial TUN packet write" }; true
+                } catch(e: android.system.ErrnoException) { if(e.errno==OsConstants.EAGAIN) false else throw e }
+            },{ timeout -> Os.poll(arrayOf(writePoll),timeout); Unit },{ bytes ->
+                !stopped.get() && outboundHeader(bytes)?.let { allowed(it) }==true
+            })
+            val engine=PacketForwarder(::tcp,::udp,::policyAllows,{ bytes ->
+                if(!writer.write(bytes)) throw java.io.InterruptedIOException("TUN reply revoked")
+                val h=outboundHeader(bytes)
+                if(trafficLogs.allow(h,1)) EngineEvents.record(h?.let { owners[it]?.connection },"REPLY ${bytes.size} bytes",h?.protocol)
             },onError={ error ->
                 EngineEvents.record(null,"Transport failure: ${error.javaClass.simpleName}: ${error.message}")
-            },pathMtu={ underlyingMtu })
+            },pathMtu={ underlyingMtu },authorizeIo=::allowed)
             forwarder=engine
             EngineEvents.liveConnections={ engine.snapshot().mapNotNull { flow ->
                 owners[flow.header]?.connection?.let { c -> EngineEvents.LiveConnection(c,flow.header.protocol,flow.header.sourcePort,flow.status,flow.tunInputBytes,flow.tunOutputBytes) }

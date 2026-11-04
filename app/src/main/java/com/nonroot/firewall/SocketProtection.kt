@@ -18,7 +18,7 @@ object SocketProtection {
         catch(e: Exception) { s.close(); throw e }
     }
     fun udp(protect: (DatagramSocket)->Boolean): DatagramSocket {
-        val s=DatagramSocket(null)
+        val s=java.nio.channels.DatagramChannel.open().socket()
         try { check(protect(s)) { "UDP socket protection rejected" }; return s }
         catch(e: Exception) { s.close(); throw e }
     }

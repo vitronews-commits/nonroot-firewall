@@ -84,6 +84,7 @@ jobs:
             python3 tools/echo_server.py > /tmp/firewall-echo.log 2>&1 &
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.loadAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest --stacktrace
             python3 tools/verify_vpn_results.py app/build/outputs/androidTest-results/connected/debug
+            python3 tools/verify_load_results.py app/build/outputs/androidTest-results/connected/debug
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -122,6 +123,7 @@ jobs:
             python3 tools/echo_server.py > /tmp/firewall-echo.log 2>&1 &
             gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.vpnAcceptance=true -Pandroid.testInstrumentationRunnerArguments.soakAcceptance=true -Pandroid.testInstrumentationRunnerArguments.class=com.nonroot.firewall.VpnAcceptanceTest -Pandroid.testInstrumentationRunnerArguments.timeout_msec=4500000 --stacktrace
             python3 tools/verify_vpn_results.py app/build/outputs/androidTest-results/connected/debug
+            python3 tools/verify_load_results.py app/build/outputs/androidTest-results/connected/debug --soak
       - uses: actions/upload-artifact@v4
         if: always()
         with:

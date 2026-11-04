@@ -22,7 +22,8 @@ class TcpProxySession(
     private val permitted: ()->Boolean,
     private val idleMs: Long=120_000,
     private val initialSequence: Long=SecureRandom().nextInt().toLong() and MASK,
-    private val onError: (Exception)->Unit={}
+    private val onError: (Exception)->Unit={},
+    private val authorizeUpload: ()->Boolean=permitted
 ): Closeable {
     companion object {
         const val FIN=1; const val SYN=2; const val RST=4; const val PSH=8; const val ACK=16
@@ -83,9 +84,9 @@ class TcpProxySession(
     }
     fun run() {
         try {
-            if(closed.get() || !permitted()) return
+            if(closed.get() || !permitted() || !authorizeUpload()) return
             val upstream=socketFactory(); socket=upstream
-            if(closed.get() || !permitted()) { upstream.close(); return }
+            if(closed.get() || !permitted() || !authorizeUpload()) { upstream.close(); return }
             upstream.tcpNoDelay=true
             upstream.connect(InetSocketAddress(initial.header.destination,initial.header.destinationPort!!),5000)
             val channel=upstream.channel
@@ -101,6 +102,7 @@ class TcpProxySession(
                 repeat(32) { incoming.poll()?.let { process(it,upstream) } }
                 if(closed.get()) break
                 if(upload.position()>0) {
+                    if(!authorizeUpload()) break
                     val previousFree=upload.remaining()
                     upload.flip()
                     if(channel!=null) channel.write(upload)
@@ -198,7 +200,7 @@ class TcpProxySession(
             if(clientFin || p.payload.size>upload.remaining()) { emit(); return }
             upload.put(p.payload); clientNext=add(clientNext,p.payload.size)
             // Legacy sockets write immediately to preserve the synchronous harness contract.
-            if(upstream.channel==null) { upload.flip(); val b=ByteArray(upload.remaining()); upload.get(b); upstream.getOutputStream().write(b); upload.clear() }
+            if(upstream.channel==null) { if(!authorizeUpload()) { close(); return }; upload.flip(); val b=ByteArray(upload.remaining()); upload.get(b); upstream.getOutputStream().write(b); upload.clear() }
             emit()
         }
         if(p.flags and FIN!=0 && !clientFin) {

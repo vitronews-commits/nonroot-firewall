@@ -15,6 +15,7 @@ class PathMtuTest {
         val h=PacketParser.Header("10.23.0.2","192.0.2.4",17,1234,443,false)
         val raw=TransportPacket.build(h,ByteArray(1400))
         val error=checkNotNull(PathMtu.response(raw,1280))
+        assertEquals(TransportPacket.parse(raw)!!.header,PathMtu.originatingHeader(error))
         assertEquals(3,error[20].toInt()); assertEquals(4,error[21].toInt()); assertEquals(1280,TransportPacket.u16(error,26))
         assertTrue(validChecksum(error,0,20)); assertTrue(validChecksum(error,20,error.size))
         assertArrayEquals(raw.copyOf(28),error.copyOfRange(28,error.size))
@@ -24,6 +25,7 @@ class PathMtuTest {
         val h=PacketParser.Header("fd23::2","2001:db8::4",17,1234,443,false)
         val raw=TransportPacket.build(h,ByteArray(1400))
         val error=checkNotNull(PathMtu.response(raw,1280))
+        assertEquals(TransportPacket.parse(raw)!!.header,PathMtu.originatingHeader(error))
         assertEquals(1280,error.size); assertEquals(58,error[6].toInt()); assertEquals(2,error[40].toInt())
         assertEquals(1280,TransportPacket.u16(error,46))
         var pseudo=(error.size-40).toLong()+58

@@ -34,6 +34,31 @@ class ProbeInstrumentation : Instrumentation() {
             } finally { socket.close(); writer.join(2000) }
         }
     }
+    private fun dnsTransports() {
+        val bytes=java.io.ByteArrayOutputStream()
+        val data=java.io.DataOutputStream(bytes)
+        data.writeShort(0x4e52); data.writeShort(0x0100); data.writeShort(1)
+        repeat(3) { data.writeShort(0) }
+        for(label in listOf("firewall-test","invalid")) { data.writeByte(label.length); data.write(label.toByteArray()) }
+        data.writeByte(0); data.writeShort(1); data.writeShort(1)
+        val query=bytes.toByteArray()
+        fun verify(reply: ByteArray) {
+            check(reply.size==query.size+16 && reply[0]==query[0] && reply[1]==query[1])
+            check(reply[2]==0x81.toByte() && reply[3]==0x80.toByte())
+            check(reply.takeLast(4).toByteArray().contentEquals(byteArrayOf(192.toByte(),0,2,123)))
+        }
+        DatagramSocket().use { socket ->
+            socket.soTimeout=5000; socket.connect(InetSocketAddress("10.0.2.2",28082))
+            socket.send(DatagramPacket(query,query.size)); val reply=DatagramPacket(ByteArray(512),512)
+            socket.receive(reply); verify(reply.data.copyOf(reply.length))
+        }
+        Socket().use { socket ->
+            socket.soTimeout=5000; socket.connect(InetSocketAddress("10.0.2.2",28083),5000)
+            val output=java.io.DataOutputStream(socket.getOutputStream()); output.writeShort(query.size); output.write(query)
+            val input=java.io.DataInputStream(socket.getInputStream()); val length=input.readUnsignedShort(); check(length<=512)
+            val reply=ByteArray(length); input.readFully(reply); verify(reply)
+        }
+    }
     override fun onCreate(arguments: Bundle?) { mode=arguments?.getString("mode") ?: "allow"; durationSeconds=arguments?.getString("durationSeconds")?.toIntOrNull()?.coerceIn(0,3660) ?: 0; start() }
     private fun permissionDenied(error: Throwable): Boolean {
         var cause: Throwable?=error
@@ -49,7 +74,7 @@ class ProbeInstrumentation : Instrumentation() {
         var stage="initial"
         var received=0
         try {
-            val payload="separate-UID-through-TUN".toByteArray()
+            val payload=ByteArray(1200) { (it*17).toByte() }
             if(mode=="stress" || mode=="soak") {
                 val started=System.nanoTime()
                 val cpu=android.os.Process.getElapsedCpuTime()
@@ -67,12 +92,12 @@ class ProbeInstrumentation : Instrumentation() {
                     val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(durationSeconds.toLong())
                     while(System.nanoTime()<deadline) {
                         stage="soak-transfer"; transfer(65536); completed+=65536
-                        DatagramSocket().use { udp -> udp.soTimeout=5000; udp.connect(InetSocketAddress("10.0.2.2",28081)); udp.send(DatagramPacket(payload,payload.size)); val answer=DatagramPacket(ByteArray(128),128); udp.receive(answer); check(answer.data.copyOf(answer.length).contentEquals(payload)) }
+                        DatagramSocket().use { udp -> udp.soTimeout=5000; udp.connect(InetSocketAddress("10.0.2.2",28081)); udp.send(DatagramPacket(payload,payload.size)); val answer=DatagramPacket(ByteArray(1500),1500); udp.receive(answer); check(answer.data.copyOf(answer.length).contentEquals(payload)) }
                         Thread.sleep(5000)
                     }
                 }
                 result.putString("status","OK")
-                result.putString("metrics","mode=$mode bytes=$completed elapsedMs=${(System.nanoTime()-started)/1000000} cpuMs=${android.os.Process.getElapsedCpuTime()-cpu} pssBeforeKiB=$pssBefore pssAfterKiB=${android.os.Debug.getPss()}")
+                result.putString("metrics","mode=$mode bytes=$completed concurrentConnections=${if(mode=="stress") 4 else 1} elapsedMs=${(System.nanoTime()-started)/1000000} cpuMs=${android.os.Process.getElapsedCpuTime()-cpu} pssBeforeKiB=$pssBefore pssAfterKiB=${android.os.Debug.getPss()}")
                 finish(Activity.RESULT_OK,result); return
             }
             val tcpPayload=if(mode=="allow") ByteArray(65536) { (it*37).toByte() } else payload
@@ -102,12 +127,13 @@ class ProbeInstrumentation : Instrumentation() {
                     }
                 }
             }
+            if(mode=="allow") { stage="dns-transports"; dnsTransports() }
             if(mode=="allow" || mode=="udp_block") {
                 DatagramSocket().use { udp ->
                     udp.soTimeout=3000; udp.connect(InetSocketAddress("10.0.2.2",28081))
                     stage="udp-send"
                     udp.send(DatagramPacket(payload,payload.size))
-                    val reply=DatagramPacket(ByteArray(128),128)
+                    val reply=DatagramPacket(ByteArray(1500),1500)
                     try {
                         stage="udp-receive"
                         udp.receive(reply)

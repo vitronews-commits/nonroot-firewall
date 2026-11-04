@@ -63,7 +63,7 @@ class VpnAcceptanceTest {
             val allowed=probe("allow")
             assertTrue(allowed.replace("\n"," | ")+" events="+EngineEvents.snapshot().take(12),allowed.contains("status=OK"))
             val events=EngineEvents.snapshot()
-            for(port in listOf(28080,28081)) {
+            for(port in listOf(28080,28081,28082,28083)) {
                 assertTrue("Missing real probe transport on port $port: "+events.take(12),events.any {
                     it.connection?.packageName==probePackage && it.connection.port==port && it.result=="QUEUED"
                 })
