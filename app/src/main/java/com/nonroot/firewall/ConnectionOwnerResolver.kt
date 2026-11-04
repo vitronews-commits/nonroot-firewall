@@ -34,7 +34,7 @@ class ConnectionOwnerResolver(context: Context) {
             val uid = connectivity.getConnectionOwnerUid(protocol, local, remote)
             if (uid == Process.INVALID_UID || uid < 0) return null
             val names = packages.getPackagesForUid(uid)?.distinct()?.sorted().orEmpty()
-            if (names.isEmpty()) null else Owner(uid, names)
+            Owner(uid, names) // Preserve numeric identity for diagnostics; empty/shared packages still have no unambiguous owner.
         } catch (_: SecurityException) {
             null
         } catch (_: IllegalArgumentException) {

@@ -8,14 +8,19 @@ import org.json.JSONObject
 class RuleStore(context: Context, private val onRulesSaved: () -> Unit = {}) {
     private val prefs = context.getSharedPreferences("firewall_rules", Context.MODE_PRIVATE)
 
-    fun load(): MutableList<IpRule> {
+    fun load(strict: Boolean=false): MutableList<IpRule> {
         val result = mutableListOf<IpRule>()
-        val array = try { JSONArray(prefs.getString("ip_rules", "[]")) } catch (_: Exception) { JSONArray() }
+        val array = try { JSONArray(prefs.getString("ip_rules", "[]")) } catch (e: Exception) { if(strict) throw IllegalStateException("Malformed saved rules",e); JSONArray() }
         for (i in 0 until array.length()) {
             try {
                 val obj = array.getJSONObject(i)
                 val cidr = obj.getString("cidr")
-                if (!RuleEngine.isValidCidr(cidr)) continue
+                if(strict) {
+                    require(obj.get("cidr") is String && obj.get("decision") is String)
+                    for(key in listOf("packageName","network")) require(!obj.has(key) || obj.get(key) is String)
+                    require(!obj.has("port") || (obj.get("port") is Int && obj.getInt("port") in -1..65535)) { "Malformed saved port" }
+                }
+                if (!RuleEngine.isValidCidr(cidr)) { check(!strict) { "Malformed saved CIDR" }; continue }
                 result.add(IpRule(
                     obj.optString("packageName").takeIf { it.isNotBlank() },
                     cidr,
@@ -23,12 +28,15 @@ class RuleStore(context: Context, private val onRulesSaved: () -> Unit = {}) {
                     Decision.valueOf(obj.getString("decision")),
                     obj.optInt("port", -1).takeIf { it in 0..65535 }
                 ))
-            } catch (_: Exception) { /* Ignore malformed individual records. */ }
+            } catch (e: Exception) { if(strict) throw IllegalStateException("Malformed saved IP rule",e) }
         }
         return result
     }
 
     fun save(rules: List<IpRule>): Boolean {
+        // A normal edit must not silently discard malformed records omitted by a tolerant UI read.
+        // Explicit validated import uses RuleBackup.apply to replace both keys atomically.
+        try { load(strict=true) } catch(_: Exception) { return false }
         val array = JSONArray()
         for (rule in rules) {
             require(RuleEngine.isValidCidr(rule.cidr))

@@ -1,0 +1,44 @@
+name: Cancel obsolete development verification runs
+on:
+  push:
+    branches: [development/daily-use]
+    paths: [.github/workflows/cleanup-obsolete.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Free emulator slots used by superseded intermediate revisions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_HEAD: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 60); do
+            gh api 'repos/vitronews-commits/nonroot-firewall/actions/runs?branch=development%2Fdaily-use&per_page=100' > /tmp/runs.json
+            current_run=$(python3 - <<'PYCODE'
+          import json, os
+          runs = json.load(open("/tmp/runs.json"))["workflow_runs"]
+          matches = [r for r in runs if r["name"] == "Android verification" and r["head_sha"] == os.environ["CURRENT_HEAD"]]
+          print(max(matches, key=lambda r: r["id"])["id"] if matches else "")
+          PYCODE
+            )
+            [ -n "$current_run" ] && break
+            sleep 5
+          done
+          [ -n "$current_run" ] || { echo 'Current Android verification run not found'; exit 1; }
+          export CURRENT_RUN="$current_run"
+          python3 - <<'PYCODE' > /tmp/selection.txt
+          import json, os
+          runs = [r for r in json.load(open("/tmp/runs.json"))["workflow_runs"] if r["name"] == "Android verification"]
+          current = int(os.environ["CURRENT_RUN"])
+          print("KEEP", current)
+          for run in runs:
+              if run["id"] != current and run["status"] in ("queued", "in_progress"):
+                  print("CANCEL", run["id"])
+          PYCODE
+          while read -r action run; do
+            if [ "$action" = "KEEP" ]; then latest_run="$run"; else gh run cancel "$run" --repo vitronews-commits/nonroot-firewall || true; fi
+          done < /tmp/selection.txt

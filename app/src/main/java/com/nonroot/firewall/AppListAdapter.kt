@@ -22,8 +22,6 @@ class AppListAdapter(
     data class Item(val pkg: String, val label: String, val system: Boolean)
     private var items: List<Item> = emptyList()
     private val icons = LruCache<String, Drawable>(96)
-    init { setHasStableIds(true) }
-    override fun getItemId(position: Int): Long = items[position].pkg.hashCode().toLong()
     fun refreshRule(pkg: String) {
         val position = items.indexOfFirst { it.pkg == pkg }
         if (position >= 0) notifyItemChanged(position)

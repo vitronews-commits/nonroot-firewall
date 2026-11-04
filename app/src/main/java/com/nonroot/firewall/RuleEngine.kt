@@ -16,20 +16,20 @@ class RuleEngine(
     fun decide(connection: Connection): Decision {
         require(connection.port in 0..65535)
         // Global UI pre-filters run first. Each filter list uses first-match ordering.
-        val global = ipRules.filter {
+        val global = ipRules.firstOrNull {
             it.packageName == null &&
             (it.network == null || it.network == connection.network) &&
             (it.port == null || it.port == connection.port) &&
             matchesCidr(connection.ip, it.cidr)
         }
-        global.firstOrNull()?.let { return it.decision }
-        val specific = ipRules.filter {
+        global?.let { return it.decision }
+        val specific = ipRules.firstOrNull {
             it.packageName == connection.packageName &&
             (it.network == null || it.network == connection.network) &&
             (it.port == null || it.port == connection.port) &&
             matchesCidr(connection.ip, it.cidr)
         }
-        specific.firstOrNull()?.let { return it.decision }
+        specific?.let { return it.decision }
         appRules.lastOrNull { it.packageName == connection.packageName && it.network == connection.network }
             ?.let { return it.decision }
         appRules.lastOrNull { it.packageName == connection.packageName && it.network == null }
@@ -52,7 +52,7 @@ class RuleEngine(
                 } catch (_: Exception) { false }
             }
             val octets = ip.split('.')
-            if (octets.size != 4 || octets.any { it.isEmpty() || !it.all(Char::isDigit) || it.toIntOrNull() !in 0..255 }) return false
+            if (octets.size != 4 || octets.any { it.isEmpty() || !it.all { c -> c in '0'..'9' } || it.toIntOrNull() !in 0..255 }) return false
             return bits in 0..32
         }
     }
@@ -68,7 +68,7 @@ class RuleEngine(
             } else {
                 val octets = address.split('.')
                 octets.size == 4 && octets.all {
-                    it.isNotEmpty() && it.all(Char::isDigit) && it.toIntOrNull() in 0..255
+                    it.isNotEmpty() && it.all { c -> c in '0'..'9' } && it.toIntOrNull() in 0..255
                 }
             }
             if (!numeric) return false

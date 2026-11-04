@@ -29,6 +29,8 @@ object TransportPacket {
         val h=PacketParser.parse(b) ?: return null
         if(h.fragmented || h.protocol !in listOf(6,17) || h.sourcePort !in 1..65535 || h.destinationPort !in 1..65535) return null
         val v4=(b[0].toInt() and 240)==64
+        // Java collapses mapped Inet6Address literals: never silently change the wire family.
+        if(!v4 && (':' !in h.source || ':' !in h.destination)) return null
         // IP options and IPv6 extensions are deliberately unsupported, never bypassed.
         val offset=if(v4) 20 else 40
         if(v4 && (b[0].toInt() and 15)!=5) return null

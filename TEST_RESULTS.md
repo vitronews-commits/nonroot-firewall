@@ -1,3 +1,43 @@
+# 0.3.0-dev acceptance ledger — 4 November 2026
+
+**Not accepted for daily use.** Main remains 0.2.1-dev. Candidate changes are on
+`development/daily-use` ([PR #3](https://github.com/vitronews-commits/nonroot-firewall/pull/3)).
+Latest source is `7fd4a62f60bbd1c15ab974c2a6058a91fc440954`, [CI run 41865446592](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41865446592).
+A passing sub-check does not make its enclosing failed JUnit suite pass.
+
+| Capability | Status | Evidence / limitation |
+|---|---|---|
+| Original 125 JVM regression IDs | PASS | Latest run: 162 tests, zero failures/errors/skips; all 125 baseline IDs preserved |
+| Candidate build/lint/debug and unsigned release | PASS | Latest run 41865446592, build job 126698366073 |
+| New FIN/keepalive/flow-incarnation regressions | PASS | Latest run: 162 JVM tests, zero failures/errors/skips |
+| Separate-UID IPv4 TCP 1/10/100 MiB + four concurrent | PASS | API 35 c0fa47e, run 41813702595; 100 MiB 130173 ms (~6.44 Mbit/s) |
+| CPU / memory load measurements | PASS | Same run: engine CPU 92256 ms / 153090 ms elapsed, PSS 106117 to 47341 KiB; emulator only |
+| API 35 complete separate-UID real-TUN network/lifecycle acceptance | PASS | Latest explicit test: 1 executed / 0 skipped; TCP/UDP/DNS, rule revocation, handover, reconnect, STOP/START and closed-policy repair |
+| API 35 1/10/100 MiB, concurrency and latency | PASS | 837/6,804/70,632 ms; four concurrent streams; median 1,265 µs / p95 1,802 µs |
+| API 29 system DNS compatibility | FAIL | f278 source: resolver UID 1051 has zero packages and is denied; no DNS exemption |
+| API 29 clean client-first EOF | FAIL | Independent no-VPN Socket and NIO controls also reset after all 1 MiB; not proven firewall-caused |
+| API 29 latest entire test | FAIL | DNS UID 1051 has no packages and is denied; client-first EOF resets in no-VPN controls; emulator then crashes with EMFILE / INSTRUMENTATION_ABORTED |
+| 60-minute screen-off transport interval | MEASURED | 3,601,482 ms; 42,467,328 TCP bytes; 648 persistent echoes; test-only partial wake lock |
+| Entire 60-minute acceptance test | FAIL | After the transfer, new UDP ownership returned UID 0/no packages; exact app-specific Pending assertion did not pass safely |
+| Always-on lockdown across process death | FAIL | No UDP escape observed and probe remained blocked, but Android did not restore an active VPN within 60 seconds; post-test positive control not reached |
+| Physical Redmi 13C / Android 15 / HyperOS | NOT TESTED | User-operated physical validation required |
+| Doze / battery / reboot protection | NOT TESTED | Screen-off with test wake lock is not Doze or battery certification |
+| Real IPv6-only, DNS64/NAT64, external IPv6/DNS leak capture | NOT TESTED | Requires suitable network and independent capture |
+| Full DoT / DoH / QUIC protocol handshakes | NOT TESTED | Generic TCP/UDP transport is not equivalent protocol acceptance |
+| Fragment reassembly / general ICMP forwarding | NOT TESTED | Unsupported; fail-closed dropping is intentional |
+
+Latest completed run: https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41865446592
+Latest source: https://github.com/vitronews-commits/nonroot-firewall/commit/7fd4a62f60bbd1c15ab974c2a6058a91fc440954
+
+Local Gradle invocation after environment recovery failed before build because the
+Gradle distribution endpoint was unreachable. It is not counted as a test result.
+Pinned build and artifact extraction instructions: BUILDING.md. APK installation
+alone does not prove forwarding safety. No physical VPN was enabled automatically.
+
+---
+
+## Historical 0.2.1-dev evidence and downloads
+
 # NonRoot Firewall 0.2.1-dev — επαλήθευση
 
 Ημερομηνία: 4 Νοεμβρίου 2026.

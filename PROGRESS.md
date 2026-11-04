@@ -1,6 +1,35 @@
+## 2026-11-04 — TCP incarnation and FIN persistence hardening (CI verified)
+
+- Retain the existing engine and all 125 baseline tests.
+- Per-flow atomic leases revoke stale workers before tuple reuse; response delivery verifies the exact incarnation under the flow monitor.
+- FIN persistence no longer emits the previous payload byte at the FIN sequence. Keepalive probes are acknowledged without forwarding probe data. Idle expiry emits a reset and upstream sockets enable keepalive.
+- Corrupt-policy acceptance now waits for an actually established closed TUN, not merely an early error status.
+- Added three regression tests; latest CI verifies 162 JVM tests, zero failures/errors/skips, preserving all 125 baseline IDs.
+- Latest build/lint/debug/unsigned-release passed on source `7fd4a62f60bbd1c15ab974c2a6058a91fc440954`, run 41865446592. Daily-use acceptance still has the blockers below.
+
 # NonRoot Firewall — progress
 
-## Current status — 2026-11-04 / 0.2.1-dev
+## Current status — 2026-11-04 / 0.3.0-dev not yet daily-use ready
+
+- Development branch: `development/daily-use`, [PR #3](https://github.com/vitronews-commits/nonroot-firewall/pull/3). Main remains the verified 0.2.1 baseline.
+- Latest evidence: [CI 41865446592](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41865446592), source `7fd4a62f60bbd1c15ab974c2a6058a91fc440954`.
+- Build, lint, debug and unsigned release APK: PASS. JVM: 162 tests, zero failures/errors/skips; all 125 original IDs preserved.
+- API 35 separate-UID TUN acceptance: PASS (explicit test executed, 1 pass / 0 skips). TCP/UDP, DNS, active-flow rule revocation, Wi-Fi/mobile handover, reconnect, repeated STOP/START and corrupt-policy closed bootstrap/repair passed. 1/10/100 MiB timings: 837/6,804/70,632 ms; four concurrent flows; median latency 1,265 µs, p95 1,802 µs.
+- API 29 acceptance: FAIL. System DNS UID 1051 has no package attribution and remains denied; client-first half-close resets in independent no-VPN controls; emulator later crashes with EMFILE / INSTRUMENTATION_ABORTED.
+- 60-minute API 35 screen-off data interval measured 3,601,482 ms, 42,467,328 TCP bytes and 648 persistent echoes. Overall JUnit FAIL afterward: new UDP ownership returned UID 0/no packages, so the exact app-specific Pending entry could not be safely attributed.
+- Android 15 Always-on/lockdown across process death: FAIL for recovery. No external UDP escape was observed and lockdown kept the probe UID blocked, but Android did not restore an active VPN within 60 seconds.
+- Bounded NIO TCP/UDP, fresh UID checks at actual I/O, strict persisted policy, safe backups/imports, live monitoring, MTU errors and atomic route/DNS replacement implemented; see dated milestones below.
+- Local execution environment became unavailable during host-fixture verification. Work continues via GitHub; no unexecuted local check is counted as passed.
+- Remaining physical acceptance: Redmi/HyperOS, reboot, actual Doze/battery behavior, real IPv6-only/DNS64/NAT64 and external leak capture. No physical-device VPN was activated. Do not treat the candidate as verified for daily use until failures are resolved and physical checks pass.
+
+## 2026-11-04 — daily-use readiness review
+
+- Reviewed the API 29, API 35, independent lockdown and 60-minute soak artifacts, including JUnit XML and actual TUN logs.
+- API 35 load sample: engine CPU 48,325 ms; PSS 122,283→48,343 KiB. The soak sample measured CPU 48,095 ms, PSS 121,924→48,687 KiB, peak 110,925 KiB. Emulator-only measurements; screen-off soak used a test-only partial wake lock and is not a battery/Doze certification.
+- Lockdown test confirms traffic stayed blocked while the service process was killed, but active VPN recovery timed out. This is fail-closed network containment, not proof of automatic service restart.
+- The Android VPN settings action already exposes Always-on and “Block connections without VPN”; physical Redmi/HyperOS behavior is still unverified.
+
+## Verified 0.2.1 baseline (historical) — 2026-11-04 / 0.2.1-dev
 
 - Installable debug APK produced; release APK built unsigned. Five-tab UI and existing preferences retained.
 - Final CI [41801468947](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41801468947), source `22e74810ee6669402550062489a8c8d1e55de5db`: **125 JVM tests, zero failures/errors/skips**, lint, debug/release/test/probe builds and debug signature/ZIP checks all passed.
@@ -401,3 +430,139 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 ## 0.2.1 final verification — 2026-11-04
 - Supersedes pending CI notes above: run 41801468947 passed build and both Android jobs; 125 JVM tests verified directly from XML. Both Android logs contain the explicit executed/not-skipped TUN success marker.
 - Standalone installable debug APK extracted from that run and SHA-256 checked; release remains unsigned.
+
+## Daily-use audit milestone — 2026-11-04 (in progress)
+- Separate branch development/daily-use starts from verified 0.2.1-dev.
+- ARCHITECTURE_AUDIT.md records security/lifecycle findings and Kotlin vs native stack tradeoffs. Targeted bounded-window/NIO upgrade chosen; no replacement of the verified UID/rule/protection boundary.
+- No physical-device VPN activation; no settings/data migration performed. New code remains unverified until regression/actual-TUN CI runs.
+
+## Bounded sliding-window and lifecycle implementation — verification pending
+- Protected SocketChannel upstream, selector wakeups, 32 KiB upload buffer, <=64 KiB downstream in flight with <=128 retransmission records, 256-packet bounded input queue. Cumulative ACK removal, retransmission backoff, half-close and zero-window probes added; RST sequence validated. Plain socket path retained for baseline tests only.
+- Rule reload closes explicit policy gate; numeric UID retained and rechecked; package changes invalidate transports. No-network declaration uses empty network array and gate rejects missing underlying path.
+- Added separate-UID 1/10/100 MiB and four concurrent TCP transfers with byte integrity/half-close checks and elapsed/CPU/PSS metrics. Dedicated API 35 60-minute TCP/UDP TUN soak workflow added; not yet executed.
+
+## Monitoring, rules portability and expanded regression milestone — verification pending
+- Local JVM: all 136 tests passed, including original 125, four NIO TCP state/window tests, three seeded fuzz/property tests (25,000 arbitrary packets + 3,000 generated/checksum mutations), and 1/10/100 MiB plus concurrency socket tests. JVM loopback is not Android throughput evidence.
+- Live flow metadata/counters and searchable protocol/result-filtered Logs inside existing fifth tab. Counts explicitly represent TUN IP bytes including retransmissions.
+- Bounded 128 KiB versioned rules backup via Android document picker, whole-file validation and one atomic commit for both original preference keys. Five Android backup tests added; no user data migration. Always-on/lockdown uses Android VPN settings.
+- First expanded API 29 TUN load run exposed connection reset on 1 MiB; remains FAIL pending diagnosis. Added progress/error diagnostics, not a timeout relaxation or test skip. API 35/soak not yet established as passing.
+- DNS servers taken from underlying LinkProperties at establishment rather than hardcoded public resolvers. DNS changes during handover still require explicit compatibility acceptance.
+
+## Security and PMTU milestone — verification pending
+- Corrupt stored policy now closes forwarding gate; raw preferences are not rewritten. Bounded JSON nesting/UTF-8/schema checks protect import before recursive Android parsing. Log sampling reduces per-packet UI metadata churn; flow byte counters retain all admitted IP bytes.
+- Added checksum-tested ICMPv4 fragmentation-needed / ICMPv6 Packet Too Big for permitted oversized UDP relative to cached underlying MTU; denied packets cannot allocate sockets or receive this response. Upstream TCP PMTU remains kernel-managed. Unsupported fragment/extension data remains denied.
+- First API 35 actual TUN 1/10/100 MiB + concurrency passed; API 29 reset remains under investigation. Backup rejection test fixture corrected to mutate structured JSON (Android escapes CIDR slash in serialized JSON); the prior string replacement did not mutate its input.
+
+## I/O authorization, backpressure and compatibility milestone — verification pending
+- Retain fresh UID/package validation at each actual upstream write/connect and TUN reply; cheap generation/rule checks replace redundant UID binder calls inside bookkeeping loops. No UID TTL cache introduced. Added deny-at-I/O regression.
+- TunWriter retries EAGAIN via POLLOUT with a bounded deadline and revalidates authorization after every wait. No blind retry or busy loop; counters advance after successful output. Android 10 reset diagnosis remains subject to actual TUN rerun.
+- Protected UDP DatagramChannel uses selector wakeups; unconnected send plus exact remote address/port receive filtering preserves valid zero-length datagrams (connected JDK channel optimized them away). Tests cover empty/1200/1472-byte UDP and counters.
+- Separate-UID fixtures now exchange real DNS wire messages over UDP/TCP, and a 1200-byte UDP echo (QUIC-sized transport, not a QUIC/TLS handshake certification). Mandatory metric verifier rejects missing load or <60-minute soak evidence.
+- Fixed JVM-only CPU metric reflection so Android unit-test compilation does not require unsupported management APIs.
+
+## Android evidence correction and lockdown acceptance harness — verification pending
+- Latest 150-test build passed, but all Android runs correctly failed when sampled SYN-ACK suppressed the first payload log. Distinct payload/control sample keys now preserve the mandatory actual-TCP-return assertion; assertion was not weakened.
+- Added removable test-only DPC to probe APK and an emulator-only process-death test: supported DevicePolicyManager Always-on + lockdown, separate-UID denied UDP during kill/restart, independent host leak sink, recovery and cleanup checks. No admin component added to firewall APK; physical devices are refused.
+- 60-minute soak now records minute heartbeats/PSS/active flow counts and starts with verified screen sleep. This is emulator screen-off evidence only, not physical Doze/battery certification.
+- Removed hash-based RecyclerView stable IDs (distinct package names can have equal Java hashes); DiffUtil retains full package identity.
+
+## DNS/network lifecycle and reproducible tooling milestone — verification pending
+- Network/DNS changes now version the route configuration, invalidate old flows and close policy gate. Worker establishes replacement TUN before releasing the old descriptor; offline placeholders retain captured routes with a closed gate. Internal transport failure retains any established TUN while retrying, rather than deliberately restoring ordinary routing.
+- Per-service START guard no longer depends on global UI status. Added emulator Wi-Fi loss/reconnect, optional actual cellular handover (otherwise explicitly NOT_TESTED), repeated START and two STOP/START roundtrips.
+- Link-local IPv6 upstream addresses acquire the selected physical interface scope; policy still evaluates original numeric addresses. Missing scope fails closed. Three JVM tests added; real link-local/NAT64 remains unverified.
+- API 29 diagnostics show all 1 MiB bytes arrived, then upstream reset at EOF. Explicit host fixture SHUT_WR and channel-native half-close added; reset is not accepted as a successful EOF.
+- Gradle 8.9 wrapper generated with official pinned SHA-256. Release key remains external/private; no signing key created.
+
+## Isolated system DNS and environment checkpoint — verification pending
+- Add real Android system name resolution from the separate UID, not only manually constructed DNS packets. Emulator DNS uses an isolated host port-53 fixture; test requires correct A result and an attributed port-53 QUEUED event. Host UDP/TCP DNS fixtures self-check before emulator boot.
+- DPM lockdown coordinator reinstalls the firewall APK after Gradle UTP uninstalls its tested target; previous failure happened before lockdown was configured and is not a protection result.
+- Source edits continued through GitHub after local runtime became unavailable. No physical VPN activation or user-data migration.
+
+## Numeric/IP family audit and independent half-close controls — CI pending
+- Restrict IPv4 rule digits to ASCII; Unicode digit-like hostnames must not reach InetAddress/DNS lookup. Short hex-only hostnames rejected before resolution.
+- Reject mapped IPv6 wire addresses which Java normalizes to IPv4; do not silently change response IP family. Three targeted tests added, not locally executed while runtime is unavailable.
+- API 29 returned every 1 MiB byte then upstream response-read reset before EOF. Added no-VPN Socket and bound-SocketChannel controls against the same host fixture, explicit graceful linger and preserved host logs. Reset remains a failure.
+
+## Android system DNS identity investigation — CI pending
+- Real system DNS failed on API 29 before load. Preserve/log unknown numeric UID, package count and transport tuple without payload or DNS content; no permission is granted to package-less/shared identities.
+- AOSP resolver source explicitly uses AID_DNS on Q in affected modules because per-app fchown conflicts with Q VPN isolation: https://android.googlesource.com/platform/packages/modules/DnsResolver/+/refs/tags/android-vts-12.1_r4/resolv_private.h . Whether this explains our emulator is not assumed without UID evidence.
+- Host DNS fixture now accepts EDNS additional records and returns only the question plus its controlled answer. No-VPN Android name-resolution controls must pass before drawing conclusions about the firewall.
+
+## Independent failure diagnostics while runtime is unavailable
+- CI prints direct Socket/SocketChannel controls and preserves synthetic host logs. Temporary read-only artifact diagnostic workflow inspects prior controls through GitHub while local execution is disconnected.
+- Disposable emulator disables captive-portal probing (isolated DNS cannot validate Internet domains) and Private DNS auto-probes to make plaintext system DNS attribution deterministic. Test-lab configuration only; no production change or claim about DoT.
+
+## IPv6 NIO and diagnostic attribution regression — CI pending
+- Added 1 MiB real-socket IPv6 NIO TCP half-close coverage, and both-family UDP tests at zero/1200/MTU-limit payloads with foreign-sender rejection.
+- Transport errors now retain the original connection/protocol for filtered Logs; an asynchronous failure regression checks attribution.
+- Expected full JVM total: 158 including the unchanged 125 baseline. This is an expectation until CI XML is inspected, not a success claim.
+
+## Sleep-aware timeouts and independent-control findings — CI pending
+- Production flow/idle/RTO clocks now receive Android elapsedRealtimeNanos (includes deep sleep); JVM default stays monotonic. A simulated-suspend socket test verifies immediate stale-flow expiry after wake. Expected JVM total 159, pending CI.
+- Screen-off soak uses a bounded instrumentation-only partial wakelock and elapsed realtime. Release APK has no new wakelock permission/acquisition. This maintains test traffic generation, not a claim about idle physical-device battery.
+- Independent no-VPN API 29 Socket returned all 1 MiB then reset too (artifact diagnostic run 41817455053): TUN is not required to reproduce that EOF problem. No reset is accepted by actual TUN half-close assertions.
+- Replaced invalid multi-threaded blocking SocketChannel-adapter control (could serialize reader/writer) with single-owner NIO control. Host fixture keeps FIN-bearing descriptor briefly alive for NAT drain. Direct-control failures are printed as failures without preventing remaining diagnostics; actual TUN acceptance remains strict.
+- Clock reference: https://developer.android.com/reference/android/os/SystemClock .
+
+## Baseline contract and DNS deny acceptance — CI pending
+- Committed exact 125 baseline test IDs extracted from verified run 41801468947. CI rejects missing/skipped/failing cases and reports actual total in verification-summary.json.
+- Unique-name system DNS default-deny probe must fail resolution and create per-app port-53 Pending on supporting OS builds. No generic resolver exception.
+- Lab starts with cellular disabled to prevent default-network switches invalidating isolated DNS control. Handover explicitly enables cellular; mobile DNS requires MOBILE-attributed DNS event, then cellular disables to test Wi-Fi return.
+- Rule evaluation stops at first matching global/application filter without intermediate matching-list allocations; precedence and mutable-list baseline tests retained.
+
+## Confirmed Android 10 external compatibility limits / diagnostic isolation
+- Source f278ced, run 41818439830 API 29: system DNS packets explicitly report UID 1051, zero packages, UDP destination 10.0.2.3:53, and are correctly denied. Attribution to requesting app is unavailable in this resolver build; no global DNS bypass is introduced.
+- Independent Socket AND NIO controls without VPN both received all 1 MiB then reset instead of EOF. This is an emulator/underlying-path compatibility failure independently of our TUN endpoint; clean EOF is still not accepted as passing.
+- Acceptance records system-DNS and client-first-half-close results separately and keeps their final assertions. Numeric 1/10/100 MiB payload tests can run on API 29 without claiming clean EOF, while a separate actual-TUN half-close test remains strict. API 29 overall acceptance still FAILs if either required capability fails.
+- The per-app DNS default-deny case is explicitly NOT_TESTED when framework identity is unavailable; this is not a passing skip. Other transport/lifecycle work continues.
+
+## Persisted-data recovery and service restart hardening — CI pending
+- Ordinary RuleStore/AppRuleStore saves now refuse to overwrite malformed current records; tolerant display loading cannot accidentally discard a corrupt block during an unrelated edit. Export reads strict validated snapshots; only explicit validated import replaces corrupt keys.
+- After protected preflight, a malformed-policy bootstrap retains a closed TUN instead of deliberately releasing routing. Added actual-TUN corruption/blocked-I/O/explicit-repair acceptance and Android storage-preservation checks.
+- Successful/duplicate START returns START_STICKY to aid OS process recovery. STOP/revoke explicitly terminate; sticky restart alone is not a lockdown guarantee. Home status distinguishes OFF after a terminal error.
+- Added a single-APK debug artifact to reduce confusion with instrumentation/probe APKs. Release remains unsigned.
+
+## Emulator association and verification resource control
+- API 35 completed load and reached Wi-Fi return, but merely enabling the radio did not reassociate the emulator SSID. Explicit test-only AndroidWifi reassociation added; no production network preference override.
+- Superseded intermediate emulator workflows are cancelled to free CI slots. Keep the latest source and the already-running sleep-aware 60-minute engine sample (41818439830); no unfinished soak is counted as passing.
+- Maintenance workflow is temporary development scaffolding, not an app feature.
+
+## 2026-11-04 — independent lockdown evidence
+
+- Run lockdown acceptance independently from network compatibility assertions; otherwise an unrelated mobile DNS failure prevents process-death testing entirely.
+- Create a new probe UDP socket for every attempt across process death. A socket retained from the old VPN is insufficient evidence for lockdown of newly opened connections.
+- Require external-sink positive controls before and after the test. Refuse installation over existing firewall app data even on an emulator.
+- Exact retained soak evidence from source 72b4f55: 3,605,281 ms, 42,532,864 TCP bytes plus UDP echoes, engine CPU 49,528 ms, PSS before/after 120,327/48,537 KiB. Screen off with a test-only partial wake lock. The encompassing JUnit test FAILED later on DNS Pending; this is not a complete soak acceptance PASS or a battery/Doze result.
+
+## 2026-11-04 — broaden diagnostics without masking failures
+
+- Keep DNS compatibility failures until the final assertion so reconnect, repeated START/STOP and corrupt-policy repair are still exercised. The test still fails when any recorded requirement fails.
+- Add 32 round-trip latency samples (median/p95) and one persistent TCP stream throughout the 60-minute screen-off transfer loop, alongside fresh TCP/UDP sessions. The metrics validator requires those observations; pending execution.
+
+## 2026-11-04 — transparent route status and crash diagnostics
+
+- Home status distinguishes captured VPN routes from an inactive app; it no longer claims traffic blocking while the VPN is off.
+- Preserve full emulator logcat independently of UTP: API 29 system crashes left no per-test logcat. Crashes remain failures.
+- Downloaded candidate 16d9448 APK matches CI SHA-256 b2e54bae18d506688db6f9b1d523232f1c04363b659a3e543a5835d4eb67328b; development candidate, not daily-use acceptance.
+
+- Lockdown harness initially failed before VPN activation because `pm path` returns nonzero for an absent package. Use exact `pm list packages` membership for the fresh-install guard; no existing data is overwritten. Verification rerun required.
+
+## 2026-11-04 — explicit VPN STOP lifecycle fix
+
+- Actual API 35 acceptance at 16d9448 failed `expected OFF but was RUNNING` after STOP. UI used stopService while descriptor closure was deferred until onDestroy.
+- A live VPN is platform-bound: now the STOP action closes transports/original TUN and interrupts the worker (which closes duplicated descriptors in finally) before stopSelf. UI and instrumentation invoke the same STOP action. Revoke and destroy share cleanup.
+- Test retains the OFF assertion and repeated real TCP/UDP reconnect; verification pending. No failure is converted into a timeout allowance or skip.
+
+## 2026-11-04 — distinguish Android UID admission from firewall DNS
+
+- API 35 global logcat shows netd `GetAddrInfoHandler: network access blocked` immediately after instrumentation force-stops/restarts the probe UID. This lookup never reaches TUN. Await the Android default-network unblocked callback before system DNS tests; retain exact per-app QUEUED/Pending assertions.
+- Latest API 35 STOP/restart and corrupt-bootstrap/repair markers passed before the final DNS assertion.
+- Lockdown reached initial VPN and the no-escape UDP assertion after kill, but timed out waiting for VPN recovery. This remains FAIL, not full protection evidence. Restart global logcat after adb root (which terminates the old connection) and preserve service/connectivity dumps on recovery failure.
+- New changes require CI verification. No system UID/DNS bypass added.
+
+- Add bootstrap/worker exception logging to Android logcat so recovery failures remain diagnosable without opening the UI. No packet payloads are logged.
+- API 29 run 41859966632 died with host exit 137 during emulator startup, before instrumentation. It must not be attributed to the firewall engine without further evidence.
+
+- Latest diagnostics/DNS readiness runs are queued on GitHub Actions (41864381968 and 41864720220), including the maintenance job to retire superseded runs. No new PASS is inferred from a queued run. API 35 at 8bf0047 explicitly passed Wi-Fi reconnect, repeated START/STOP and corrupt-policy repair before failing initial system DNS admission.
+
+- Apply the same bounded Android UID admission observation to `vpn_status`: repeatedly launching instrumentation must not inspect the default network before Android has admitted that new probe process. A one-second timeout is reported as not admitted; it never declares a missing VPN present or relaxes recovery requirements.

@@ -30,10 +30,8 @@ class VpnAcceptanceTest {
         val appStore=AppRuleStore(context,RuleChangeBus::notifySaved)
         val ipStore=RuleStore(context,RuleChangeBus::notifySaved)
         val savedApps=appStore.load(); val savedIps=ipStore.load()
-        fun shell(command: String) {
-            android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use {
-                it.readBytes()
-            }
+        fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use {
+            String(it.readBytes(),Charsets.UTF_8)
         }
         val activity=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         try {
@@ -42,19 +40,27 @@ class VpnAcceptanceTest {
             assertTrue(ipStore.save(emptyList()))
             assertTrue(appStore.save(listOf(AppRule(context.packageName,null,Decision.ALLOW))))
             context.startForegroundService(Intent(context,FirewallVpnService::class.java))
-            val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
-            while(EngineEvents.status!="RUNNING" && System.nanoTime()<deadline) Thread.sleep(100)
+            val deadline=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
+            while(EngineEvents.status!="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<deadline) Thread.sleep(100)
             assertEquals(EngineEvents.snapshot().take(5).toString(),"RUNNING",EngineEvents.status)
+            repeat(3) { context.startForegroundService(Intent(context,FirewallVpnService::class.java)) }
+            Thread.sleep(250)
+            assertEquals("RUNNING",EngineEvents.status)
             val probePackage="com.nonroot.firewall.probe"
             assertTrue(appStore.save(listOf(AppRule(probePackage,null,Decision.ALLOW))))
+            var peakPss=android.os.Debug.getPss()
             fun probe(mode: String, onReady: ()->Unit = {}): String {
                 val descriptor=instrumentation.uiAutomation.executeShellCommand(
-                    "am instrument -w -e mode $mode $probePackage/.ProbeInstrumentation")
+                    "am instrument -w -e mode $mode -e durationSeconds 3600 $probePackage/.ProbeInstrumentation")
                 val output=StringBuilder()
                 android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { reader ->
                     while(true) {
                         val line=reader.readLine() ?: break
-                        output.append(line).append('\n')
+                        if(!line.contains("heartbeat=") && !line.contains("INSTRUMENTATION_STATUS_CODE")) output.append(line).append('\n')
+                        if(line.contains("heartbeat=")) {
+                            val memory=android.os.Debug.getPss(); peakPss=maxOf(peakPss,memory)
+                            println("TUN_HEARTBEAT $line enginePssKiB=$memory activeFlows=${EngineEvents.liveConnections().size}")
+                        }
                         if(line.contains("phase=READY")) onReady()
                     }
                 }
@@ -63,7 +69,7 @@ class VpnAcceptanceTest {
             val allowed=probe("allow")
             assertTrue(allowed.replace("\n"," | ")+" events="+EngineEvents.snapshot().take(12),allowed.contains("status=OK"))
             val events=EngineEvents.snapshot()
-            for(port in listOf(28080,28081)) {
+            for(port in listOf(28080,28081,28082,28083)) {
                 assertTrue("Missing real probe transport on port $port: "+events.take(12),events.any {
                     it.connection?.packageName==probePackage && it.connection.port==port && it.result=="QUEUED"
                 })
@@ -73,6 +79,37 @@ class VpnAcceptanceTest {
                     it.result.startsWith("REPLY ") &&
                     (it.result.removePrefix("REPLY ").substringBefore(' ').toIntOrNull() ?: 0)>64
             })
+            val compatibilityFailures=mutableListOf<String>()
+            val systemDns=probe("system_dns")
+            val systemDnsSupported=systemDns.contains("status=OK")
+            val dnsIdentityEvidence=EngineEvents.snapshot().filter { it.result.contains(":53") }.take(8).toString()
+            println("TUN_SYSTEM_DNS "+(if(systemDnsSupported) "PASS" else "FAIL")+" "+systemDns.replace("\n"," | ")+" "+dnsIdentityEvidence)
+            if(systemDnsSupported) assertTrue("Missing per-app system DNS",EngineEvents.snapshot().any {
+                it.connection?.packageName==probePackage && it.connection.port==53 && it.result=="QUEUED"
+            })
+            // Keep independent failures until the end so numeric transport/lifecycle diagnostics still execute.
+            val halfClose=probe("half_close")
+            val halfClosePassed=halfClose.contains("status=OK")
+            println("TUN_CLIENT_FIRST_HALF_CLOSE "+(if(halfClosePassed) "PASS" else "FAIL")+" "+halfClose.replace("\n"," | "))
+            if(InstrumentationRegistry.getArguments().getString("loadAcceptance")=="true") {
+                val cpu=android.os.Process.getElapsedCpuTime(); val memory=android.os.Debug.getPss()
+                val stress=probe(if(Build.VERSION.SDK_INT<30) "stress_payload" else "stress")
+                assertTrue(stress.replace("\n"," | ")+" / events="+EngineEvents.snapshot().take(25),stress.contains("status=OK"))
+                println("TUN_STRESS "+stress.replace("\n"," | ")+" engineCpuMs=${android.os.Process.getElapsedCpuTime()-cpu} enginePssBeforeKiB=$memory enginePssAfterKiB=${android.os.Debug.getPss()}")
+            }
+            if(InstrumentationRegistry.getArguments().getString("soakAcceptance")=="true") {
+                val begin=android.os.SystemClock.elapsedRealtimeNanos(); val cpu=android.os.Process.getElapsedCpuTime(); val memory=android.os.Debug.getPss()
+                val wake=context.getSystemService(android.os.PowerManager::class.java).newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK,"NonRootFirewallTest:soak")
+                wake.acquire(java.util.concurrent.TimeUnit.MINUTES.toMillis(70))
+                val soak=try {
+                    shell("input keyevent 223"); Thread.sleep(500)
+                    assertTrue("Screen did not enter sleep",shell("dumpsys power").contains("mWakefulness=Asleep"))
+                    probe("soak")
+                } finally { if(wake.isHeld) wake.release(); shell("input keyevent 224") }
+                assertTrue(soak.replace("\n"," | "),soak.contains("status=OK"))
+                assertTrue(java.util.concurrent.TimeUnit.NANOSECONDS.toMinutes(android.os.SystemClock.elapsedRealtimeNanos()-begin)>=60)
+                println("TUN_SOAK enginePssPeakKiB=$peakPss screenOffAtStart=true "+soak.replace("\n"," | ")+" engineCpuMs=${android.os.Process.getElapsedCpuTime()-cpu} enginePssBeforeKiB=$memory enginePssAfterKiB=${android.os.Debug.getPss()}")
+            }
             var sawReady=false
             val revoked=probe("tcp_hold") {
                 sawReady=true
@@ -86,9 +123,86 @@ class VpnAcceptanceTest {
             assertTrue(unknown.replace("\n"," | "),unknown.contains("status=BLOCKED"))
             assertTrue("Expected exact UDP Pending request: "+EngineEvents.pending.snapshot()+" / "+EngineEvents.snapshot().take(12),
                 EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage && it.connection.ip=="10.0.2.2" && it.connection.port==28081 })
+            if(systemDnsSupported) {
+                val deniedDns=probe("dns_block")
+                assertTrue(deniedDns.replace("\n"," | "),deniedDns.contains("status=BLOCKED"))
+                val pendingDns=EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage && it.connection.port==53 }
+                if(!pendingDns) compatibilityFailures.add("DNS denied but exact per-app Pending was absent; events="+EngineEvents.snapshot().take(20))
+                println("TUN_DNS_DEFAULT_DENY "+if(pendingDns) "PASS" else "FAIL")
+            } else println("TUN_DNS_DEFAULT_DENY NOT_TESTED_PER_APP; shared resolver remained blocked")
+            // Toggle only emulator networking. Reconnect must rebuild DNS/routes while old TUN blocks.
+            assertTrue(appStore.save(listOf(AppRule(probePackage,null,Decision.ALLOW))))
+            try {
+                shell("svc data enable"); shell("svc wifi disable")
+                var limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
+                while(EngineEvents.network==NetworkKind.WIFI && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
+                assertNotEquals("Wi-Fi loss callback not observed",NetworkKind.WIFI,EngineEvents.network)
+                if(EngineEvents.network==NetworkKind.MOBILE) {
+                    while(EngineEvents.status!="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
+                    val mobile=probe("allow_mobile"); assertTrue(mobile.replace("\n"," | "),mobile.contains("status=OK"))
+                    val mobileDns=probe("system_dns_mobile")
+                    val mobileDnsAttributed=EngineEvents.snapshot().any { it.connection?.packageName==probePackage && it.connection.port==53 && it.connection.network==NetworkKind.MOBILE && it.result=="QUEUED" }
+                    val mobileDnsPassed=mobileDns.contains("status=OK") && mobileDnsAttributed
+                    if(!mobileDnsPassed) compatibilityFailures.add("Mobile DNS failed: "+mobileDns.replace("\n"," | ")+" events="+EngineEvents.snapshot().take(20))
+                    println("TUN_HANDOVER WIFI_TO_MOBILE_TRANSPORT PASS; SYSTEM_DNS "+if(mobileDnsPassed) "PASS" else "FAIL")
+                } else {
+                    while(EngineEvents.status=="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
+                    assertTrue("Offline gate not retained",EngineEvents.status.startsWith("WAITING"))
+                    assertTrue(EngineEvents.liveConnections().isEmpty())
+                    println("TUN_HANDOVER WIFI_TO_OFFLINE PASS; WIFI_TO_MOBILE NOT_TESTED (no cellular path)")
+                }
+            } finally {
+                shell("svc wifi enable")
+                if(Build.VERSION.SDK_INT>=30) println("WIFI_REASSOCIATE "+shell("cmd wifi connect-network AndroidWifi open"))
+                shell("svc data disable")
+            }
+            var limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(45)
+            while((EngineEvents.network!=NetworkKind.WIFI || EngineEvents.status!="RUNNING") && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
+            assertEquals("Wi-Fi restore: "+shell("cmd wifi status"),NetworkKind.WIFI,EngineEvents.network); assertEquals("RUNNING",EngineEvents.status)
+            val reconnect=probe("allow"); assertTrue(reconnect.replace("\n"," | "),reconnect.contains("status=OK"))
+            println("TUN_RECONNECT WIFI_TCP_UDP_DNS PASS")
+            repeat(2) {
+                context.startService(Intent(context,FirewallVpnService::class.java).setAction(FirewallVpnService.STOP))
+                limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
+                while(EngineEvents.status!="OFF" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(50)
+                assertEquals("OFF",EngineEvents.status); assertTrue(EngineEvents.liveConnections().isEmpty())
+                context.startForegroundService(Intent(context,FirewallVpnService::class.java))
+                limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
+                while(EngineEvents.status!="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
+                assertEquals("RUNNING",EngineEvents.status)
+                val restarted=probe("allow"); assertTrue(restarted.replace("\n"," | "),restarted.contains("status=OK"))
+            }
+            println("TUN_REPEATED_START_STOP PASS")
+            context.startService(Intent(context,FirewallVpnService::class.java).setAction(FirewallVpnService.STOP))
+            limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
+            while(EngineEvents.status!="OFF" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(50)
+            assertEquals("OFF",EngineEvents.status)
+            val corrupt="[{\"cidr\":\"invalid\",\"decision\":\"BLOCK\"}]"
+            val prefs=context.getSharedPreferences("firewall_rules",0)
+            assertTrue(prefs.edit().putString("ip_rules",corrupt).commit())
+            context.startForegroundService(Intent(context,FirewallVpnService::class.java))
+            limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
+            while((!EngineEvents.status.startsWith("ERROR") || !EngineEvents.tunnelEstablished) && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(100)
+            assertTrue("Corrupt bootstrap did not capture traffic with closed policy",EngineEvents.status.startsWith("ERROR") && EngineEvents.tunnelEstablished)
+            assertEquals(corrupt,prefs.getString("ip_rules",null))
+            assertFalse(ipStore.save(emptyList()))
+            val corruptBlocked=probe("udp_block")
+            assertTrue(corruptBlocked.replace("\n"," | "),corruptBlocked.contains("status=BLOCKED"))
+            assertTrue(RuleBackup.apply(context,RuleBackup.Data(emptyList(),listOf(AppRule(probePackage,null,Decision.ALLOW)))))
+            limit=android.os.SystemClock.elapsedRealtimeNanos()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
+            while(EngineEvents.status!="RUNNING" && android.os.SystemClock.elapsedRealtimeNanos()<limit) Thread.sleep(50)
+            assertEquals("RUNNING",EngineEvents.status)
+            val repaired=probe("allow")
+            assertTrue(repaired.replace("\n"," | "),repaired.contains("status=OK"))
+            println("TUN_CORRUPT_BOOTSTRAP_AND_EXPLICIT_REPAIR PASS")
+
+            assertTrue(compatibilityFailures.joinToString(" | "),compatibilityFailures.isEmpty())
+            assertTrue("System DNS attribution unsupported/failed: "+systemDns.replace("\n"," | ")+" "+dnsIdentityEvidence,systemDnsSupported)
+            assertTrue("Clean client-first half-close failed (compare independent controls): "+halfClose.replace("\n"," | "),halfClosePassed)
         } finally {
-            context.stopService(Intent(context,FirewallVpnService::class.java))
-            appStore.save(savedApps); ipStore.save(savedIps)
+            shell("svc wifi enable"); if(Build.VERSION.SDK_INT>=30) shell("cmd wifi connect-network AndroidWifi open"); shell("svc data disable")
+            context.startService(Intent(context,FirewallVpnService::class.java).setAction(FirewallVpnService.STOP))
+            assertTrue(RuleBackup.apply(context,RuleBackup.Data(savedIps,savedApps)))
             shell("appops set ${context.packageName} ACTIVATE_VPN default")
             instrumentation.runOnMainSync { activity.finish() }
         }
