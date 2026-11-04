@@ -22,8 +22,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 class FirewallVpnService : VpnService() {
     companion object { const val STOP="com.nonroot.firewall.STOP" }
     private val stopped=AtomicBoolean(false)
+    private val trafficLogs=TrafficLogLimiter()
     private val worker=Executors.newSingleThreadExecutor()
     @Volatile private var selectedNetwork: Network?=null
+    @Volatile private var underlyingMtu=1500
     @Volatile private var classifiedKind=NetworkKind.OTHER
     private var tun: ParcelFileDescriptor?=null
     @Volatile private var forwarder: PacketForwarder?=null
@@ -38,6 +40,7 @@ class FirewallVpnService : VpnService() {
         override fun onAvailable(network: Network) { updateNetwork() }
         override fun onLost(network: Network) { updateNetwork(network) }
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { updateNetwork() }
+        override fun onLinkPropertiesChanged(network: Network, properties: android.net.LinkProperties) { if(network==selectedNetwork) underlyingMtu=properties.mtu.takeIf { it>0 } ?: 1500 }
     }
     override fun onCreate() {
         super.onCreate()
@@ -68,10 +71,17 @@ class FirewallVpnService : VpnService() {
     }
     @Synchronized private fun reload() {
         policyReady=false
-        rules=RuleEngine(RuleStore(this).load(),AppRuleStore(this).load())
+        rules=try { RuleEngine(RuleStore(this).load(strict=true),AppRuleStore(this).load(strict=true)) }
+        catch(e: Exception) {
+            forwarder?.invalidate(); owners.clear()
+            EngineEvents.status="ERROR — malformed saved rules; forwarding blocked"
+            EngineEvents.record(null,EngineEvents.status)
+            throw e
+        }
         forwarder?.invalidate()
         owners.clear()
         updateNetwork()
+        trafficLogs.clear()
         policyReady=true
         EngineEvents.pending.snapshot().filter { rules.decide(it.connection)!=Decision.PENDING }
             .forEach { EngineEvents.pending.resolve(it.connection) }
@@ -96,6 +106,7 @@ class FirewallVpnService : VpnService() {
         policyReady=false
         forwarder?.invalidate()
         owners.clear()
+        underlyingMtu=next?.let { connectivity.getLinkProperties(it)?.mtu }?.takeIf { it>0 } ?: 1500
         selectedNetwork=next
         classifiedKind=kind
         if(tun!=null) setUnderlyingNetworks(next?.let { arrayOf(it) } ?: emptyArray())
@@ -151,12 +162,12 @@ class FirewallVpnService : VpnService() {
                     if(!stopped.get()) {
                         out.write(bytes)
                         val h=PacketParser.parse(bytes)?.let { TransportPacket.reverse(it) }
-                        EngineEvents.record(h?.let { owners[it]?.connection },"REPLY ${bytes.size} bytes",h?.protocol)
+                        if(trafficLogs.allow(h,1)) EngineEvents.record(h?.let { owners[it]?.connection },"REPLY ${bytes.size} bytes",h?.protocol)
                     }
                 }
             },onError={ error ->
                 EngineEvents.record(null,"Transport failure: ${error.javaClass.simpleName}: ${error.message}")
-            })
+            },pathMtu={ underlyingMtu })
             forwarder=engine
             EngineEvents.liveConnections={ engine.snapshot().mapNotNull { flow ->
                 owners[flow.header]?.connection?.let { c -> EngineEvents.LiveConnection(c,flow.header.protocol,flow.header.sourcePort,flow.status,flow.tunInputBytes,flow.tunOutputBytes) }
@@ -174,14 +185,14 @@ class FirewallVpnService : VpnService() {
                 if(size<0) break
                 val bytes=buffer.copyOf(size)
                 val p=TransportPacket.parse(bytes)
-                if(p==null) { EngineEvents.record(null,"DROP malformed/unsupported packet"); continue }
+                if(p==null) { if(trafficLogs.allow(null,2)) EngineEvents.record(null,"DROP malformed/unsupported packet"); continue }
                 val h=p.header
                 val owner=resolver.resolve(h)
                 val pkg=owner?.unambiguousPackage
                 if(pkg==null) {
                     owners.remove(h)
                     engine.accept(bytes) // Revoke a previously attributed flow, if any.
-                    EngineEvents.record(null,"DROP unknown/shared UID"); continue
+                    if(trafficLogs.allow(h,2)) EngineEvents.record(null,"DROP unknown/shared UID"); continue
                 }
                 val connection=Connection(pkg,h.destination,h.destinationPort!!,network())
                 val decision=rules.decide(connection)
@@ -198,7 +209,7 @@ class FirewallVpnService : VpnService() {
                     owners[h]=Attribution(owner!!.uid,connection)
                 } else owners.remove(h)
                 val forwarded=engine.accept(bytes)
-                EngineEvents.record(connection,if(forwarded) "QUEUED" else if(decision==Decision.ALLOW) "DROP transport capacity/state" else decision.name+" / dropped",h.protocol)
+                if(trafficLogs.allow(h,if(forwarded) 0 else 2)) EngineEvents.record(connection,if(forwarded) "QUEUED" else if(decision==Decision.ALLOW) "DROP transport capacity/state" else decision.name+" / dropped",h.protocol)
             }
         } catch(e: Exception) {
             if(!stopped.get()) {
@@ -211,7 +222,7 @@ class FirewallVpnService : VpnService() {
             stopSelf()
         }
     }
-    override fun onRevoke() { stopSelf(); super.onRevoke() }
+    override fun onRevoke() { policyReady=false; stopped.set(true); forwarder?.close(); stopSelf(); super.onRevoke() }
     override fun onDestroy() {
         policyReady=false
         stopped.set(true)

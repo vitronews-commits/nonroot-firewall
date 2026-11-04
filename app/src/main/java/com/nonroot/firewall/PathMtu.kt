@@ -1,0 +1,45 @@
+package com.nonroot.firewall
+
+import java.net.InetAddress
+
+/** Locally generated MTU errors for permitted UDP only. Never accepts inbound ICMP as authorization. */
+object PathMtu {
+    private fun checksum(bytes: ByteArray,seed: Long=0): Int {
+        var sum=seed; var i=0
+        while(i+1<bytes.size) { sum+=TransportPacket.u16(bytes,i); i+=2 }
+        if(i<bytes.size) sum+=(bytes[i].toInt() and 255) shl 8
+        while(sum ushr 16!=0L) sum=(sum and 65535)+(sum ushr 16)
+        return sum.toInt().inv() and 65535
+    }
+    fun response(original: ByteArray,mtu: Int): ByteArray? {
+        val p=TransportPacket.parse(original) ?: return null
+        if(p.header.protocol!=17 || original.size<=mtu) return null
+        val v6=original[0].toInt() ushr 4 and 15==6
+        val minimum=if(v6) 1280 else 68
+        require(mtu in minimum..1500)
+        val offset=if(v6) 40 else 20
+        val quote=original.copyOf(minOf(original.size,if(v6) 1232 else 28))
+        val icmp=ByteArray(8+quote.size)
+        icmp[0]=(if(v6) 2 else 3).toByte(); icmp[1]=(if(v6) 0 else 4).toByte()
+        if(v6) { TransportPacket.put16(icmp,4,mtu ushr 16); TransportPacket.put16(icmp,6,mtu) }
+        else TransportPacket.put16(icmp,6,mtu)
+        quote.copyInto(icmp,8)
+        val b=ByteArray(offset+icmp.size)
+        val src=InetAddress.getByName(p.header.destination).address
+        val dst=InetAddress.getByName(p.header.source).address
+        if(v6) {
+            b[0]=0x60; TransportPacket.put16(b,4,icmp.size); b[6]=58; b[7]=64
+            src.copyInto(b,8); dst.copyInto(b,24)
+            var pseudo=icmp.size.toLong()+58
+            for(i in 8 until 40 step 2) pseudo+=TransportPacket.u16(b,i)
+            TransportPacket.put16(icmp,2,checksum(icmp,pseudo))
+        } else {
+            b[0]=0x45; TransportPacket.put16(b,2,b.size); b[8]=64; b[9]=1
+            src.copyInto(b,12); dst.copyInto(b,16)
+            TransportPacket.put16(b,10,checksum(b.copyOf(20)))
+            TransportPacket.put16(icmp,2,checksum(icmp))
+        }
+        icmp.copyInto(b,offset)
+        return b
+    }
+}

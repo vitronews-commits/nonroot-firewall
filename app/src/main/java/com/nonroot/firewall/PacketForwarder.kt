@@ -18,7 +18,8 @@ class PacketForwarder(
     private val policy: (PacketParser.Header)->Boolean,
     private val output: (ByteArray)->Unit,
     private val capacity: Int=64,
-    private val onError: (Exception)->Unit={}
+    private val onError: (Exception)->Unit={},
+    private val pathMtu: ()->Int={ 1500 }
 ): Closeable {
     private data class Entry(val closeable: Closeable, val accept: (TransportPacket.Packet)->Boolean, var lastActivity: Long=System.nanoTime(), val startedAt: Long=System.currentTimeMillis(), var inputBytes: Long=0,var outputBytes: Long=0,val state: ()->String={ "ACTIVE" })
     private val flows=HashMap<PacketParser.Header,Entry>()
@@ -34,6 +35,10 @@ class PacketForwarder(
         val p=TransportPacket.parse(raw) ?: return false
         val h=p.header
         if(!policy(h)) { flows.remove(h)?.closeable?.close(); return false }
+        if(h.protocol==17) {
+            val mtu=pathMtu().coerceIn(if(':' in h.source) 1280 else 68,1500)
+            if(raw.size>mtu) PathMtu.response(raw,mtu)?.let { error -> if(policy(h)) output(error); return false }
+        }
         flows[h]?.let {
             val accepted=it.accept(p)
             if(accepted) { it.lastActivity=System.nanoTime(); it.inputBytes+=raw.size }

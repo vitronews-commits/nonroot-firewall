@@ -12,6 +12,9 @@ import java.util.concurrent.atomic.AtomicReference
 class TcpLoadTest {
     private fun transfer(size: Int) {
         val begin=System.nanoTime()
+        val os=java.lang.management.ManagementFactory.getOperatingSystemMXBean() as com.sun.management.OperatingSystemMXBean
+        val cpuBefore=os.processCpuTime
+        val runtime=Runtime.getRuntime(); val heapBefore=runtime.totalMemory()-runtime.freeMemory()
         val failure=AtomicReference<Throwable?>()
         ServerSocket(0,4,InetAddress.getByName("127.0.0.1")).use { server ->
             server.soTimeout=10000
@@ -57,7 +60,7 @@ class TcpLoadTest {
                 }
                 assertEquals(size,received)
                 echo.join(3000); assertFalse(echo.isAlive); assertNull(failure.get())
-                println("JVM_TCP bytes=$size elapsedMs=${(System.nanoTime()-begin)/1000000}")
+                println("JVM_TCP bytes=$size elapsedMs=${(System.nanoTime()-begin)/1000000} processCpuMs=${(os.processCpuTime-cpuBefore)/1000000} heapBeforeBytes=$heapBefore heapAfterBytes=${runtime.totalMemory()-runtime.freeMemory()}")
             } finally { s.close(); worker.join(3000); echo.join(3000); assertFalse(worker.isAlive) }
         }
     }

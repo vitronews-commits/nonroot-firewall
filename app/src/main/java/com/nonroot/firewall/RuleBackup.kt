@@ -27,12 +27,16 @@ object RuleBackup {
     fun decode(bytes: ByteArray): Data {
         require(bytes.size in 1..MAX_BYTES) { "Backup must be at most 128 KiB" }
         val text=Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
-        val obj=JSONObject(text)
+        JsonEnvelope.validate(text)
+        val tokener=org.json.JSONTokener(text)
+        val obj=tokener.nextValue() as? JSONObject ?: error("Backup must be an object")
+        require(tokener.nextClean()==0.toChar()) { "Trailing JSON content" }
         require(obj.getString("format")=="nonroot-firewall-rules" && obj.get("version")==1) { "Unsupported backup version" }
         val ipArray=obj.getJSONArray("ipRules"); val appArray=obj.getJSONArray("appRules")
         require(ipArray.length()+appArray.length()<=MAX_RULES) { "Too many rules" }
         val ips=(0 until ipArray.length()).map { i ->
             val r=ipArray.getJSONObject(i)
+            for(key in listOf("packageName","cidr","network","decision")) require(r.get(key) is String) { "Invalid string field" }
             val pkg=r.getString("packageName").takeIf { it.isNotEmpty() }
             require(pkg==null || validPackage(pkg)) { "Invalid package" }
             val cidr=r.getString("cidr"); require(cidr.length<=80 && RuleEngine.isValidCidr(cidr)) { "Invalid numeric CIDR" }
@@ -40,7 +44,7 @@ object RuleBackup {
             IpRule(pkg,cidr,network(r),Decision.valueOf(r.getString("decision")),rawPort.takeIf { it>=0 })
         }
         val apps=(0 until appArray.length()).map { i ->
-            val r=appArray.getJSONObject(i); val pkg=r.getString("packageName"); require(validPackage(pkg)) { "Invalid package" }
+            val r=appArray.getJSONObject(i); for(key in listOf("packageName","network","decision")) require(r.get(key) is String) { "Invalid string field" }; val pkg=r.getString("packageName"); require(validPackage(pkg)) { "Invalid package" }
             val decision=Decision.valueOf(r.getString("decision")); require(decision!=Decision.PENDING)
             AppRule(pkg,network(r),decision)
         }

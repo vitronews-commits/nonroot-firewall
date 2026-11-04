@@ -16,15 +16,29 @@ class RuleBackupInstrumentationTest {
     @Test fun boundedUtf8AndUnknownVersionAreRejected() {
         rejected(ByteArray(RuleBackup.MAX_BYTES+1))
         rejected(byteArrayOf(0xc3.toByte(),0x28))
-        rejected(String(RuleBackup.encode(example)).replace("\"version\": 1","\"version\": 2").toByteArray())
+        val archive=org.json.JSONObject(String(RuleBackup.encode(example))).put("version",2)
+        rejected(archive.toString().toByteArray())
     }
     @Test fun invalidCidrPortNetworkAndDecisionRejectWholeArchive() {
-        val original=String(RuleBackup.encode(example))
-        for((before,after) in listOf("2001:db8::/32" to "example.com/32","443" to "65536","WIFI" to "SATELLITE","BLOCK" to "ALLOW_ALL"))
-            rejected(original.replace(before,after).toByteArray())
+        for((key,value) in listOf("cidr" to "example.com/32","port" to 65536,"network" to "SATELLITE","decision" to "ALLOW_ALL")) {
+            val archive=org.json.JSONObject(String(RuleBackup.encode(example)))
+            archive.getJSONArray("ipRules").getJSONObject(0).put(key,value)
+            rejected(archive.toString().toByteArray())
+        }
     }
     @Test fun duplicateApplicationRulesAreRejected() {
         try { RuleBackup.encode(example.copy(apps=example.apps+example.apps.first())); fail() } catch(_: IllegalArgumentException) { }
+    }
+    @Test fun strictEngineLoadRejectsCorruptionWithoutRewritingData() {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext.createDeviceProtectedStorageContext()
+        val prefs=context.getSharedPreferences("firewall_rules",0)
+        val old=prefs.getString("ip_rules",null)
+        try {
+            val broken="[{\"cidr\":\"broken\",\"decision\":\"BLOCK\"}]"
+            assertTrue(prefs.edit().putString("ip_rules",broken).commit())
+            try { RuleStore(context).load(strict=true); fail("Corrupt block silently ignored") } catch(_: IllegalStateException) { }
+            assertEquals(broken,prefs.getString("ip_rules",null))
+        } finally { val edit=prefs.edit(); if(old==null) edit.remove("ip_rules") else edit.putString("ip_rules",old); assertTrue(edit.commit()) }
     }
     @Test fun atomicApplyAndRejectedImportPreserveExistingData() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext.createDeviceProtectedStorageContext()
