@@ -549,3 +549,6 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Latest API 35 STOP/restart and corrupt-bootstrap/repair markers passed before the final DNS assertion.
 - Lockdown reached initial VPN and the no-escape UDP assertion after kill, but timed out waiting for VPN recovery. This remains FAIL, not full protection evidence. Restart global logcat after adb root (which terminates the old connection) and preserve service/connectivity dumps on recovery failure.
 - New changes require CI verification. No system UID/DNS bypass added.
+
+- Add bootstrap/worker exception logging to Android logcat so recovery failures remain diagnosable without opening the UI. No packet payloads are logged.
+- API 29 run 41859966632 died with host exit 137 during emulator startup, before instrumentation. It must not be attributed to the firewall engine without further evidence.

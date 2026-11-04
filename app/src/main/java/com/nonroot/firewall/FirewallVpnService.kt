@@ -197,6 +197,7 @@ class FirewallVpnService : VpnService() {
                     forwarder?.close(); forwarder=null; owners.clear()
                     EngineEvents.status="ERROR — ${e.message ?: e.javaClass.simpleName}; traffic blocked"
                     EngineEvents.record(null,EngineEvents.status)
+                    android.util.Log.e("NonRootFirewall","Captured TUN worker failed",e)
                     // Keep any established TUN as a blackhole while retrying; only STOP/revoke releases it.
                     if(tun==null) throw e
                     Thread.sleep(1000)
@@ -206,6 +207,7 @@ class FirewallVpnService : VpnService() {
             if(!stopped.get()) {
                 EngineEvents.status="ERROR — ${e.message ?: e.javaClass.simpleName}"
                 EngineEvents.record(null,EngineEvents.status)
+                android.util.Log.e("NonRootFirewall","VPN bootstrap failed before forwarding became ready",e)
             }
         } finally { stopSelf() }
     }
