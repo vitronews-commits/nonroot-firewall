@@ -11,13 +11,15 @@ A passing sub-check does not make its enclosing failed JUnit suite pass.
 | New FIN/keepalive/flow-incarnation regressions | PASS | 16d9448, run 41857164867: 162 JVM tests, zero failures/errors/skips; all 125 baseline IDs preserved |
 | Separate-UID IPv4 TCP 1/10/100 MiB + four concurrent | PASS | API 35 c0fa47e, run 41813702595; 100 MiB 130173 ms (~6.44 Mbit/s) |
 | CPU / memory load measurements | PASS | Same run: engine CPU 92256 ms / 153090 ms elapsed, PSS 106117 to 47341 KiB; emulator only |
-| API 35 complete latest network acceptance | FAIL | 72b4f55: mobile system DNS UnknownHostException |
+| API 35 STOP/START, Wi-Fi reconnect, corrupt-policy repair | PASS | 8bf0047, run 41859966632: explicit markers before final DNS failure |
+| API 35 complete latest network acceptance | FAIL | 8bf0047: initial system DNS rejected by Android netd with `network access blocked`; mobile system DNS later passed |
+| Android UID-admission synchronization for DNS probe | NOT TESTED | Added 6e7e013; CI queued, no firewall exception introduced |
 | API 29 system DNS compatibility | FAIL | f278 source: resolver UID 1051 has zero packages and is denied; no DNS exemption |
 | API 29 clean client-first EOF | FAIL | Independent no-VPN Socket and NIO controls also reset after all 1 MiB; not proven firewall-caused |
-| API 29 latest entire test | FAIL | 72b4f55: instrumentation aborted, emulator system crash |
+| API 29 latest entire test | FAIL | 8bf0047 runner exited 137 during emulator startup; no actual TUN test executed in that job |
 | 60-minute screen-off transport interval | PASS | 72b4f55: 3605281 ms, 42532864 TCP bytes plus UDP; partial wake lock used by test |
 | Entire 60-minute acceptance test | FAIL | Same job fails later at exact per-app DNS Pending assertion |
-| Always-on lockdown across process death | NOT TESTED | Independent fresh-socket / external-positive-control job added; no verified PASS yet |
+| Always-on lockdown across process death | FAIL | Initial VPN established and UDP no-escape assertion reached, but VPN recovery timed out. Post-test positive control not reached; no overall PASS |
 | Physical Redmi 13C / Android 15 / HyperOS | NOT TESTED | User-operated physical validation required |
 | Doze / battery / reboot protection | NOT TESTED | Screen-off with test wake lock is not Doze or battery certification |
 | Real IPv6-only, DNS64/NAT64, external IPv6/DNS leak capture | NOT TESTED | Requires suitable network and independent capture |

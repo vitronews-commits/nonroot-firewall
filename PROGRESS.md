@@ -552,3 +552,5 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 
 - Add bootstrap/worker exception logging to Android logcat so recovery failures remain diagnosable without opening the UI. No packet payloads are logged.
 - API 29 run 41859966632 died with host exit 137 during emulator startup, before instrumentation. It must not be attributed to the firewall engine without further evidence.
+
+- Latest diagnostics/DNS readiness runs are queued on GitHub Actions (41864381968 and 41864720220), including the maintenance job to retire superseded runs. No new PASS is inferred from a queued run. API 35 at 8bf0047 explicitly passed Wi-Fi reconnect, repeated START/STOP and corrupt-policy repair before failing initial system DNS admission.
