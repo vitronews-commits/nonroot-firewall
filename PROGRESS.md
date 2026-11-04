@@ -374,3 +374,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Prefer validated physical networks, falling back to available non-VPN networks when none are validated. This permits switching to a working mobile path when Wi-Fi loses validation without treating RSSI refreshes as network handovers.
 - Recheck closure/policy immediately after TCP/UDP socket factory returns, before connect/send, so a concurrent rule/network revocation cannot reuse a socket allocated across invalidation.
 - Changes require CI verification; physical network transition/Doze acceptance remains pending.
+
+## Android 15 permission-denial test semantics — 2026-11-04
+- API 35 acceptance surfaced IOException/sendto EPERM. Probe diagnostics now include mode and phase so an allowed-flow failure is distinguishable from an expected deny/revoke outcome.
+- Explicit EPERM/EACCES cause chains are accepted only in blocked UDP or post-established-TCP-revocation phases; other I/O errors remain errors.
+- Unknown UDP success additionally requires the exact probe/IP/port (10.0.2.2:28081) in engine Pending, so an OS-only denial with no packet attribution cannot falsely pass.
+- Established-flow revocation now explicitly requires the probe's READY marker after its first successful echo. Production engine behavior is unchanged by this fixture correction; CI execution pending.

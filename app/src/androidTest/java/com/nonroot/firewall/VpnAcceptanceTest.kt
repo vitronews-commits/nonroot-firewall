@@ -65,15 +65,19 @@ class VpnAcceptanceTest {
             assertTrue("Separate-UID attribution did not reach engine: "+EngineEvents.snapshot().take(12),EngineEvents.snapshot().any {
                 it.connection?.packageName==probePackage && it.result=="QUEUED"
             })
+            var sawReady=false
             val revoked=probe("tcp_hold") {
+                sawReady=true
                 assertTrue(ipStore.save(listOf(IpRule(null,"10.0.2.2/32",null,Decision.BLOCK,28080))))
             }
+            assertTrue("Probe never confirmed an established echo connection: "+revoked,sawReady)
             assertTrue(revoked,revoked.contains("status=BLOCKED"))
             assertTrue(appStore.save(emptyList()))
             assertTrue(ipStore.save(emptyList()))
             val unknown=probe("udp_block")
             assertTrue(unknown,unknown.contains("status=BLOCKED"))
-            assertTrue(EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage })
+            assertTrue("Expected exact UDP Pending request: "+EngineEvents.pending.snapshot()+" / "+EngineEvents.snapshot().take(12),
+                EngineEvents.pending.snapshot().any { it.connection.packageName==probePackage && it.connection.ip=="10.0.2.2" && it.connection.port==28081 })
         } finally {
             context.stopService(Intent(context,FirewallVpnService::class.java))
             appStore.save(savedApps); ipStore.save(savedIps)
