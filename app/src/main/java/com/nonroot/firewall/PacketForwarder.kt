@@ -17,7 +17,8 @@ class PacketForwarder(
     private val udpSocket: ()->DatagramSocket,
     private val policy: (PacketParser.Header)->Boolean,
     private val output: (ByteArray)->Unit,
-    private val capacity: Int=64
+    private val capacity: Int=64,
+    private val onError: (Exception)->Unit={}
 ): Closeable {
     private data class Entry(val closeable: Closeable, val accept: (TransportPacket.Packet)->Boolean, var lastActivity: Long=System.nanoTime())
     private val flows=HashMap<PacketParser.Header,Entry>()
@@ -106,7 +107,7 @@ class PacketForwarder(
                             deliver(h,TransportPacket.build(TransportPacket.reverse(h),buffer.copyOf(packet.length)),epoch)
                     } catch(_: SocketTimeoutException) { }
                 }
-            } catch(_: Exception) { } finally { close() }
+            } catch(e: Exception) { if(!stopped.get() && !closed.get()) onError(e) } finally { close() }
         }
         override fun close() { if(stopped.compareAndSet(false,true)) { socket?.close(); queue.clear() } }
     }

@@ -312,3 +312,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - GitHub run 41746647739 build job passed unit/integration tests, lint, all APK builds, ZIP checks and debug signature verification. Emulator job is still running; no TUN result claimed yet.
 - Hardened return-path authorization to re-resolve Android socket ownership; cached attribution alone cannot authorize replies after a tuple is reassigned. Attribution loss revokes the existing flow, and changed owner/network invalidates old sessions.
 - Added a policy-revocation-without-event return-path test and an IPv6 TCP multi-segment integrity test. These latest additions require execution.
+
+## Protected Android preflight failure investigation — 2026-11-04
+- Latest local full non-device build passed with 111 JVM tests (including IPv6 TCP multi-segment and event-free policy revocation), lint and all APKs.
+- GitHub no-VPN instrumentation passed (three tests; gated VPN test skipped as intended).
+- Explicit VPN acceptance failed BEFORE TUN establishment: protected UDP preflight received no datagram and timed out (run 41746647739). Safety gate prevented activation; this is an unresolved Android integration failure, not a passing VPN result.
+- Added transport error propagation into preflight diagnostics to expose the underlying Android socket failure instead of only the timeout. Investigation continuing.

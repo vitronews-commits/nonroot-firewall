@@ -14,13 +14,17 @@ object EngineSelfTest {
         val loop=InetAddress.getByName("127.0.0.1")
         val payload="firewall-preflight".toByteArray()
         val replies=LinkedBlockingQueue<ByteArray>()
-        PacketForwarder(tcp,udp,{ true },{ replies.offer(it) },4).use { engine ->
+        val errors=java.util.concurrent.ConcurrentLinkedQueue<Exception>()
+        PacketForwarder(tcp,udp,{ true },{ replies.offer(it) },4,{ errors.offer(it) }).use { engine ->
             DatagramSocket(0,loop).use { server ->
                 server.soTimeout=3000
                 val h=PacketParser.Header("10.23.0.2","127.0.0.1",17,43001,server.localPort,false)
                 check(engine.accept(TransportPacket.build(h,payload)))
                 val request=DatagramPacket(ByteArray(256),256)
-                server.receive(request)
+                try { server.receive(request) } catch(e: Exception) {
+                    val failure=errors.peek()
+                    throw IllegalStateException("UDP preflight receive: " + (failure?.let { it.javaClass.simpleName+": "+it.message } ?: e.message),failure ?: e)
+                }
                 check(request.data.copyOf(request.length).contentEquals(payload))
                 server.send(DatagramPacket(payload,payload.size,request.socketAddress))
                 val reply=TransportPacket.parse(checkNotNull(replies.poll(3,TimeUnit.SECONDS)))!!
