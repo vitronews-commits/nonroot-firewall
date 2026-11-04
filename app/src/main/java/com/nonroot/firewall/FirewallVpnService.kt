@@ -192,6 +192,7 @@ class FirewallVpnService : VpnService() {
                     val descriptor=replaceTunnel() ?: break
                     runTunnel(descriptor)
                 } catch(e: Exception) {
+                    if(stopped.get()) break // Closing/interrupting TUN for STOP is expected, not a transport fault.
                     policyReady=false
                     forwarder?.close(); forwarder=null; owners.clear()
                     EngineEvents.status="ERROR — ${e.message ?: e.javaClass.simpleName}; traffic blocked"
