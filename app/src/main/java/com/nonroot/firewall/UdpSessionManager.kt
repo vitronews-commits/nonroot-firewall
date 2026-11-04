@@ -47,8 +47,10 @@ class UdpSessionManager(
 
         val existing = sessions[key]
         if (existing != null) {
-            if (!existing.isClosed()) return existing.send(request.payload)
+            if (!existing.isClosed() && existing.send(request.payload)) return true
             sessions.remove(key)
+            existing.close()
+            return false
         }
         if (sessions.size >= capacity) return false
 
