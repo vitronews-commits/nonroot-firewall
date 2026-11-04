@@ -113,6 +113,22 @@ class ProbeInstrumentation : Instrumentation() {
         }
         return false
     }
+    /** Instrumentation force-stops/restarts this UID. Wait for Android's blocked-UID
+     * callback before DNS; otherwise netd rejects the lookup before any TUN packet exists.
+     * This never changes firewall rules or bypasses VPN routing.
+     */
+    private fun awaitNetworkAccess() {
+        val cm=targetContext.getSystemService(android.net.ConnectivityManager::class.java)
+        val ready=java.util.concurrent.CountDownLatch(1)
+        val callback=object: android.net.ConnectivityManager.NetworkCallback() {
+            override fun onBlockedStatusChanged(network: android.net.Network, blocked: Boolean) {
+                if(!blocked) ready.countDown()
+            }
+        }
+        cm.registerDefaultNetworkCallback(callback)
+        try { check(ready.await(10,java.util.concurrent.TimeUnit.SECONDS)) { "Android kept probe UID network-blocked before DNS" } }
+        finally { cm.unregisterNetworkCallback(callback) }
+    }
     override fun onStart() {
         val result=Bundle()
         var stage="initial"
@@ -169,6 +185,7 @@ class ProbeInstrumentation : Instrumentation() {
                 finish(Activity.RESULT_OK,result); return
             }
             if(mode in listOf("system_dns","system_dns_mobile")) {
+                stage="android-network-readiness"; awaitNetworkAccess()
                 stage="system-dns"
                 val name=if(mode=="system_dns_mobile") "example.com" else "firewall-test.invalid"
                 val addresses=java.net.InetAddress.getAllByName(name)
@@ -181,6 +198,7 @@ class ProbeInstrumentation : Instrumentation() {
                 result.putString("status","OK"); finish(Activity.RESULT_OK,result); return
             }
             if(mode=="dns_block") {
+                awaitNetworkAccess()
                 val name="blocked-"+java.util.UUID.randomUUID().toString().replace("-","")+".firewall-test.invalid"
                 try {
                     java.net.InetAddress.getAllByName(name)
@@ -190,6 +208,7 @@ class ProbeInstrumentation : Instrumentation() {
             }
             if(mode in listOf("direct_socket","direct_channel")) {
                 check(android.os.Build.HARDWARE in listOf("ranchu","goldfish"))
+                stage="android-network-readiness"; awaitNetworkAccess()
                 stage="direct-system-dns"
                 check(java.net.InetAddress.getAllByName("firewall-test.invalid").any { it.hostAddress=="192.0.2.123" })
                 stage="direct-half-close"

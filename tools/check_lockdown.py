@@ -35,7 +35,10 @@ def wait_vpn():
         if "status=VPN" in status and "lockdown=true" in status:
             return
         time.sleep(1)
-    raise RuntimeError("Always-on VPN did not establish with lockdown")
+    diagnostic = Path("app/build/acceptance-reports/lockdown-recovery.txt")
+    diagnostic.parent.mkdir(parents=True, exist_ok=True)
+    diagnostic.write_text(status + "\n" + adb("shell", "dumpsys", "activity", "services", FIREWALL) + "\n" + adb("shell", "dumpsys", "connectivity"))
+    raise RuntimeError("Always-on VPN did not establish with lockdown; see lockdown-recovery.txt")
 
 
 if adb("shell", "getprop", "ro.hardware") not in ("ranchu", "goldfish"):
@@ -44,6 +47,9 @@ root_result = adb("root")
 if "cannot run as root" in root_result:
     raise SystemExit("Rootable emulator required to inject process death, test not executed")
 adb("wait-for-device")
+# adb root restarts adbd and terminates the workflow's earlier logcat connection.
+log_file = open("/tmp/firewall-system.log", "a")
+log_process = subprocess.Popen(["adb", "logcat", "-b", "all", "-v", "threadtime"], stdout=log_file, stderr=subprocess.STDOUT)
 if "package:" + FIREWALL in adb("shell", "pm", "list", "packages", FIREWALL).splitlines():
     raise SystemExit("Refusing to overwrite existing firewall installation/data; use a fresh emulator")
 adb("install", "-t", "app/build/outputs/apk/debug/app-debug.apk")  # UTP removes the tested target APK.
@@ -104,6 +110,10 @@ try:
     destination.write_text(json.dumps(report, indent=2))
     print("Verified: Android Always-on lockdown blocked separate-UID UDP across VPN process death and recovered.")
 finally:
+    # Flush evidence even when recovery or positive controls fail.
+    log_process.terminate()
+    log_process.wait(timeout=10)
+    log_file.close()
     if process is not None and process.poll() is None:
         process.terminate()
     if owner:

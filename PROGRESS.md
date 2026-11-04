@@ -542,3 +542,10 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Actual API 35 acceptance at 16d9448 failed `expected OFF but was RUNNING` after STOP. UI used stopService while descriptor closure was deferred until onDestroy.
 - A live VPN is platform-bound: now the STOP action closes transports/original TUN and interrupts the worker (which closes duplicated descriptors in finally) before stopSelf. UI and instrumentation invoke the same STOP action. Revoke and destroy share cleanup.
 - Test retains the OFF assertion and repeated real TCP/UDP reconnect; verification pending. No failure is converted into a timeout allowance or skip.
+
+## 2026-11-04 — distinguish Android UID admission from firewall DNS
+
+- API 35 global logcat shows netd `GetAddrInfoHandler: network access blocked` immediately after instrumentation force-stops/restarts the probe UID. This lookup never reaches TUN. Await the Android default-network unblocked callback before system DNS tests; retain exact per-app QUEUED/Pending assertions.
+- Latest API 35 STOP/restart and corrupt-bootstrap/repair markers passed before the final DNS assertion.
+- Lockdown reached initial VPN and the no-escape UDP assertion after kill, but timed out waiting for VPN recovery. This remains FAIL, not full protection evidence. Restart global logcat after adb root (which terminates the old connection) and preserve service/connectivity dumps on recovery failure.
+- New changes require CI verification. No system UID/DNS bypass added.
