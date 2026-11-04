@@ -2,12 +2,13 @@
 
 ## Current status — 2026-11-04
 
-- Connected VpnService engine with protected IPv4/IPv6 TCP/UDP forwarding, UID attribution, app/network/IP/CIDR/port rules, default blocking, Pending approvals and real Logs. Existing five tabs and preference keys retained.
-- Local full build passes: **112 JVM tests, 0 failed/skipped**, app/probe lint, signed debug APK, unsigned release APK, AndroidTest and independent-UID probe APK.
-- Real TUN acceptance passed locally using the separate probe UID: TCP/UDP payload integrity, attribution, established-flow revocation and default-blocked Pending.
-- CI build and API 29 real TUN acceptance pass. Audit found API 35 explicit TUN acceptance was skipped by the emulator guard despite a green job; Android 15 TUN acceptance remains unverified until the corrected guard and mandatory JUnit skip check pass.
-- Development transport limits remain: conservative stop-and-wait TCP, no fragmentation/IP options/IPv6 extension support, no ICMP path-MTU synthesis. See VALIDATION.md; this is not a production-readiness claim.
-- Remaining external acceptance: physical Redmi 13C network switching/Doze/reboot/lockdown and DNS/IPv6 leak capture; persistent release key for signed release distribution.
+- **Working development APK produced.** VpnService engine forwards protected IPv4/IPv6 TCP/UDP, attributes Android UIDs and applies app/network/IP/CIDR/port rules. Five-tab UI and existing preference keys retained; Pending/Logs are live.
+- **Final CI passed:** [run 41753223859](https://github.com/vitronews-commits/nonroot-firewall/actions/runs/41753223859), source commit `d5aa925c97f4facffc73d75e5ba10809bcdaefd3`: 112 JVM unit/integration tests, app lint, debug/release/test/probe APK builds, APK ZIP/signature checks.
+- **Actual Android acceptance passed on API 29 and API 35:** three no-VPN tests plus one explicitly executed separate-UID real-TUN test per API. Mandatory JUnit verification confirms the explicit TUN test was not skipped.
+- Real TUN checks cover TCP/UDP payload integrity, probe UID attribution, revocation of established TCP by global IP/port rule, and exact default-blocked UDP request in Pending. Protected preflight precedes TUN establishment.
+- Fixed ACK busy-wait, stale-owner-cache bulk disconnections, redundant invalidation on unchanged Wi-Fi capability/RSSI callbacks, and post-socket-allocation revocation checks.
+- Debug APK is installable; release APK is intentionally unsigned. Downloads and checksums: [TEST_RESULTS.md](TEST_RESULTS.md).
+- **Remaining physical/release acceptance:** Redmi 13C network switching/Doze/reboot/lockdown, external DNS/IPv6 leak capture, throughput/long-transfer checks, and a persistent private release signing key. Conservative TCP and unsupported fragment/extension limits are explicit in VALIDATION.md; no production-certification claim.
 
 ## Historical scaffold record (superseded by current status)
 
@@ -380,3 +381,9 @@ Update this `PROGRESS.md` whenever a meaningful implementation, test, build resu
 - Explicit EPERM/EACCES cause chains are accepted only in blocked UDP or post-established-TCP-revocation phases; other I/O errors remain errors.
 - Unknown UDP success additionally requires the exact probe/IP/port (10.0.2.2:28081) in engine Pending, so an OS-only denial with no packet attribution cannot falsely pass.
 - Established-flow revocation now explicitly requires the probe's READY marker after its first successful echo. Production engine behavior is unchanged by this fixture correction; CI execution pending.
+
+## Final verification and handoff — 2026-11-04
+- Run 41753223859 passed every job for the final implementation. Both Android logs explicitly state: `Verified: explicit separate-UID TUN acceptance executed and passed (not skipped).`
+- API 35 fixture accepts only explicit EPERM/EACCES in expected denied phases; exact UDP Pending and established-connection READY assertions prevent an unrelated OS failure from falsely satisfying the test.
+- Created TEST_RESULTS.md with artifact downloads, per-API evidence, checksums, install/data-preservation instructions and remaining physical-device criteria.
+- Local execution environment disconnected after successful local testing. No unverified local file link is presented; installable APKs and reports are available from the verified GitHub Actions artifacts.
